@@ -1,9 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Download, Search, Package, TrendingUp, AlertTriangle, FileText } from 'lucide-react';
 import './App.css';
+import useLocalStorage from './useLocalStorage';
+import { createRoot } from 'react-dom/client'; 
+import App from './App';
+
+
+
 
 const InventoryApp = () => {
-  const [inventory, setInventory] = useState([]);
+ const [inventory, setInventory] = useState(() => {
+  try {
+    const saved = localStorage.getItem('inventory');
+    return saved ? JSON.parse(saved) : [];
+  } catch (error) {
+    console.error('Error leyendo localStorage:', error);
+    return [];
+  }
+});
   const [currentView, setCurrentView] = useState('inventory');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -12,15 +26,15 @@ const InventoryApp = () => {
   const [formData, setFormData] = useState({
     codigo: '',
     nombre: '',
-    categoria: 'sabana',
+    categoria: 'Sábana',
     tamaño: 'individual',
     color: '',
     material: '',
     proveedor: '',
-    cantidadStock: 0,
-    stockMinimo: 5,
-    precioCompra: 0,
-    precioVenta: 0,
+    cantidadStock: '',    // vacíos para que no muestren 0
+    stockMinimo: '',
+    precioCompra: '',
+    precioVenta: '',
     ubicacion: '',
     fechaIngreso: new Date().toISOString().split('T')[0],
     estado: 'disponible',
@@ -29,16 +43,20 @@ const InventoryApp = () => {
 
   const categories = [
     { value: 'all', label: 'Todas las categorías' },
-    { value: 'sabana', label: 'Sábanas' },
-    { value: 'cobertor', label: 'Cobertores' },
-    { value: 'juego_completo', label: 'Juego completo' }
+    { value: 'Sábana', label: 'Sábanas' },
+    { value: 'Almohada', label: 'Almohadas' },
+    { value: 'Frazada', label: 'Frazadas' },
+    { value: 'Faldon', label: 'Faldón' },
+    { value: 'Cubre_colchon', label: 'Cubre colchón' },
+    { value: 'Plumones', label: 'Plumones' },
   ];
 
   const sizes = [
-    { value: 'individual', label: 'Individual' },
-    { value: 'matrimonial', label: 'Matrimonial' },
-    { value: 'queen', label: 'Queen' },
-    { value: 'king', label: 'King' }
+    { value: '1 plaza', label: '1 plaza' },
+    { value: '1 1/2 plaza', label: '1 1/2 plaza' },
+    { value: '2 plazas', label: '2 plazas' },
+    { value: 'king', label: 'King' },
+    { value: 'super king', label: 'Super King' }
   ];
 
   const estados = [
@@ -48,31 +66,33 @@ const InventoryApp = () => {
     { value: 'dañado', label: 'Dañado' }
   ];
 
-  useEffect(() => {
-    const savedInventory = localStorage.getItem('inventory');
-    if (savedInventory) {
-      setInventory(JSON.parse(savedInventory));
-    }
-  }, []);
 
-  useEffect(() => {
+useEffect(() => {
+  try {
     localStorage.setItem('inventory', JSON.stringify(inventory));
-  }, [inventory]);
+  } catch (error) {
+    console.error('Error guardando en localStorage:', error);
+  }
+}, [inventory]);
 
-  const handleSubmit = () => {
+const handleSubmit = () => {
+    const itemToSave = {
+      ...formData,
+      cantidadStock: parseInt(formData.cantidadStock) || 0,
+      stockMinimo: parseInt(formData.stockMinimo) || 0,
+      precioCompra: parseFloat(formData.precioCompra) || 0,
+      precioVenta: parseFloat(formData.precioVenta) || 0,
+      fechaIngreso: formData.fechaIngreso || new Date().toISOString().split('T')[0],
+    };
+
     if (editingItem) {
-      setInventory(inventory.map(item => 
-        item.id === editingItem.id ? { ...formData, id: editingItem.id } : item
+      setInventory(inventory.map(item =>
+        item.id === editingItem.id ? { ...itemToSave, id: editingItem.id } : item
       ));
     } else {
-      const newItem = {
-        ...formData,
-        id: Date.now(),
-        fechaIngreso: formData.fechaIngreso || new Date().toISOString().split('T')[0]
-      };
-      setInventory([...inventory, newItem]);
+      setInventory([...inventory, { ...itemToSave, id: Date.now() }]);
     }
-    
+
     resetForm();
     setIsModalOpen(false);
   };
@@ -81,15 +101,15 @@ const InventoryApp = () => {
     setFormData({
       codigo: '',
       nombre: '',
-      categoria: 'sabana',
+      categoria: 'Sábana',
       tamaño: 'individual',
       color: '',
       material: '',
       proveedor: '',
-      cantidadStock: 0,
-      stockMinimo: 5,
-      precioCompra: 0,
-      precioVenta: 0,
+      cantidadStock: '',
+      stockMinimo: '',
+      precioCompra: '',
+      precioVenta: '',
       ubicacion: '',
       fechaIngreso: new Date().toISOString().split('T')[0],
       estado: 'disponible',
@@ -105,15 +125,22 @@ const InventoryApp = () => {
   };
 
   const editItem = (item) => {
-    setFormData(item);
+    // Para que no haya problemas al mostrar en inputs numéricos:
+    setFormData({
+      ...item,
+      cantidadStock: item.cantidadStock === 0 ? '' : item.cantidadStock,
+      stockMinimo: item.stockMinimo === 0 ? '' : item.stockMinimo,
+      precioCompra: item.precioCompra === 0 ? '' : item.precioCompra,
+      precioVenta: item.precioVenta === 0 ? '' : item.precioVenta,
+    });
     setEditingItem(item);
     setIsModalOpen(true);
   };
 
   const filteredInventory = inventory.filter(item => {
     const matchesSearch = item.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         item.proveedor.toLowerCase().includes(searchTerm.toLowerCase());
+      item.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.proveedor.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'all' || item.categoria === selectedCategory;
     return matchesSearch && matchesCategory;
   });
@@ -124,7 +151,7 @@ const InventoryApp = () => {
 
   const exportToCSV = () => {
     const headers = ['Código', 'Nombre', 'Categoría', 'Tamaño', 'Color', 'Material', 'Proveedor', 'Stock', 'Stock Mínimo', 'Precio Compra', 'Precio Venta', 'Ubicación', 'Fecha Ingreso', 'Estado', 'Descripción'];
-    
+
     const csvContent = [
       headers.join(','),
       ...inventory.map(item => [
@@ -166,7 +193,7 @@ const InventoryApp = () => {
         category: cat.label,
         count: inventory.filter(item => item.categoria === cat.value).length,
         value: inventory.filter(item => item.categoria === cat.value)
-                    .reduce((sum, item) => sum + (item.cantidadStock * item.precioVenta), 0)
+          .reduce((sum, item) => sum + (item.cantidadStock * item.precioVenta), 0)
       })),
       topProviders: [...new Set(inventory.map(item => item.proveedor))]
         .map(provider => ({
@@ -186,19 +213,19 @@ RESUMEN GENERAL:
 - Artículos con stock bajo: ${reportData.lowStockCount}
 
 DESGLOSE POR CATEGORÍA:
-${reportData.categoryBreakdown.map(cat => 
-  `- ${cat.category}: ${cat.count} artículos (Valor: $${cat.value.toLocaleString()})`
-).join('\n')}
+${reportData.categoryBreakdown.map(cat =>
+      `- ${cat.category}: ${cat.count} artículos (Valor: $${cat.value.toLocaleString()})`
+    ).join('\n')}
 
 PRINCIPALES PROVEEDORES:
-${reportData.topProviders.map(prov => 
-  `- ${prov.provider}: ${prov.count} artículos`
-).join('\n')}
+${reportData.topProviders.map(prov =>
+      `- ${prov.provider}: ${prov.count} artículos`
+    ).join('\n')}
 
 ARTÍCULOS CON STOCK BAJO:
-${lowStockItems.map(item => 
-  `- ${item.nombre} (${item.codigo}): ${item.cantidadStock} unidades (Mínimo: ${item.stockMinimo})`
-).join('\n')}
+${lowStockItems.map(item =>
+      `- ${item.nombre} (${item.codigo}): ${item.cantidadStock} unidades (Mínimo: ${item.stockMinimo})`
+    ).join('\n')}
 
 Fecha del reporte: ${new Date().toLocaleDateString()}`;
 
@@ -322,12 +349,11 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${item.precioVenta.toLocaleString()}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
-                            item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
-                            item.estado === 'vendido' ? 'bg-gray-100 text-gray-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
+                          <span className={`px-2 py-1 text-xs rounded-full ${item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
+                              item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
+                                item.estado === 'vendido' ? 'bg-gray-100 text-gray-800' :
+                                  'bg-red-100 text-red-800'
+                            }`}>
                             {item.estado}
                           </span>
                         </td>
@@ -387,8 +413,14 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
               <div className="flex items-center">
                 <FileText className="w-8 h-8 text-purple-600" />
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Productos Únicos</p>
-                  <p className="text-2xl font-bold text-gray-900">{inventory.length}</p>
+                  <p className="text-sm font-medium text-gray-500">Categorías</p>
+                  <ul className="list-disc list-inside text-gray-700 mt-2">
+                    {categories.slice(1).map(cat => (
+                      <li key={cat.value}>
+                        {cat.label}: {inventory.filter(item => item.categoria === cat.value).length} items
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </div>
             </div>
@@ -396,188 +428,262 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
         )}
       </div>
 
+      {/* Modal para agregar/editar */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
-          <div className="relative top-20 mx-auto p-5 border w-11/12 max-w-2xl shadow-lg rounded-md bg-white">
-            <div className="mt-3">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">
-                {editingItem ? 'Editar Artículo' : 'Nuevo Artículo'}
-              </h3>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Código</label>
-                    <input
-                      type="text"
-                      value={formData.codigo}
-                      onChange={(e) => setFormData({...formData, codigo: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Nombre</label>
-                    <input
-                      type="text"
-                      value={formData.nombre}
-                      onChange={(e) => setFormData({...formData, nombre: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
-                    <select
-                      value={formData.categoria}
-                      onChange={(e) => setFormData({...formData, categoria: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      <option value="sabana">Sábana</option>
-                      <option value="cobertor">Cobertor</option>
-                      <option value="juego_completo">Juego completo</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Tamaño</label>
-                    <select
-                      value={formData.tamaño}
-                      onChange={(e) => setFormData({...formData, tamaño: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {sizes.map(size => (
-                        <option key={size.value} value={size.value}>{size.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
-                    <input
-                      type="text"
-                      value={formData.color}
-                      onChange={(e) => setFormData({...formData, color: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Material</label>
-                    <input
-                      type="text"
-                      value={formData.material}
-                      onChange={(e) => setFormData({...formData, material: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Proveedor</label>
-                    <input
-                      type="text"
-                      value={formData.proveedor}
-                      onChange={(e) => setFormData({...formData, proveedor: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad en Stock</label>
-                    <input
-                      type="number"
-                      value={formData.cantidadStock}
-                      onChange={(e) => setFormData({...formData, cantidadStock: parseInt(e.target.value) || 0})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      min="0"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Stock Mínimo</label>
-                    <input
-                      type="number"
-                      value={formData.stockMinimo}
-                      onChange={(e) => setFormData({...formData, stockMinimo: parseInt(e.target.value) || 0})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      min="0"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Precio de Compra</label>
-                    <input
-                      type="number"
-                      value={formData.precioCompra}
-                      onChange={(e) => setFormData({...formData, precioCompra: parseFloat(e.target.value) || 0})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      min="0"
-                      step="0.01"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Precio de Venta</label>
-                    <input
-                      type="number"
-                      value={formData.precioVenta}
-                      onChange={(e) => setFormData({...formData, precioVenta: parseFloat(e.target.value) || 0})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      min="0"
-                      step="0.01"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Ubicación</label>
-                    <input
-                      type="text"
-                      value={formData.ubicacion}
-                      onChange={(e) => setFormData({...formData, ubicacion: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
-                    <select
-                      value={formData.estado}
-                      onChange={(e) => setFormData({...formData, estado: e.target.value})}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {estados.map(estado => (
-                        <option key={estado.value} value={estado.value}>{estado.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Descripción</label>
-                  <textarea
-                    value={formData.descripcion}
-                    onChange={(e) => setFormData({...formData, descripcion: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    rows="3"
-                  />
-                </div>
-                <div className="flex justify-end space-x-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsModalOpen(false);
-                      resetForm();
-                    }}
-                    className="px-4 py-2 text-gray-700 bg-gray-200 rounded-md hover:bg-gray-300"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleSubmit}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                  >
-                    {editingItem ? 'Actualizar' : 'Agregar'}
-                  </button>
-                </div>
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg w-full max-w-3xl p-6 overflow-y-auto max-h-[90vh]">
+            <h2 className="text-xl font-bold mb-4">{editingItem ? 'Editar Artículo' : 'Nuevo Artículo'}</h2>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSubmit();
+              }}
+              className="space-y-4"
+            >
+              {/* Código */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="codigo">Código</label>
+                <input
+                  type="text"
+                  id="codigo"
+                  value={formData.codigo}
+                  onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
               </div>
-            </div>
+
+              {/* Nombre */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="nombre">Nombre</label>
+                <input
+                  type="text"
+                  id="nombre"
+                  value={formData.nombre}
+                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Categoría */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="categoria">Categoría</label>
+                <select
+                  id="categoria"
+                  value={formData.categoria}
+                  onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  {categories.slice(1).map(cat => (
+                    <option key={cat.value} value={cat.value}>{cat.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Tamaño */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="tamaño">Tamaño</label>
+                <select
+                  id="tamaño"
+                  value={formData.tamaño}
+                  onChange={(e) => setFormData({ ...formData, tamaño: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  {sizes.map(size => (
+                    <option key={size.value} value={size.value}>{size.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Color */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="color">Color</label>
+                <input
+                  type="text"
+                  id="color"
+                  value={formData.color}
+                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Material */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="material">Material</label>
+                <input
+                  type="text"
+                  id="material"
+                  value={formData.material}
+                  onChange={(e) => setFormData({ ...formData, material: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Proveedor */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="proveedor">Proveedor</label>
+                <input
+                  type="text"
+                  id="proveedor"
+                  value={formData.proveedor}
+                  onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Cantidad Stock */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="cantidadStock">Cantidad en Stock</label>
+                <input
+                  type="number"
+                  id="cantidadStock"
+                  min="0"
+                  value={formData.cantidadStock === 0 ? '' : formData.cantidadStock}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      cantidadStock: e.target.value === '' ? '' : parseInt(e.target.value),
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              {/* Stock Mínimo */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="stockMinimo">Stock Mínimo</label>
+                <input
+                  type="number"
+                  id="stockMinimo"
+                  min="0"
+                  value={formData.stockMinimo === 0 ? '' : formData.stockMinimo}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      stockMinimo: e.target.value === '' ? '' : parseInt(e.target.value),
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              {/* Precio Compra */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="precioCompra">Precio Compra</label>
+                <input
+                  type="number"
+                  id="precioCompra"
+                  min="0"
+                  step="0.01"
+                  value={formData.precioCompra === 0 ? '' : formData.precioCompra}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      precioCompra: e.target.value === '' ? '' : parseFloat(e.target.value),
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              {/* Precio Venta */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="precioVenta">Precio Venta</label>
+                <input
+                  type="number"
+                  id="precioVenta"
+                  min="0"
+                  step="0.01"
+                  value={formData.precioVenta === 0 ? '' : formData.precioVenta}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      precioVenta: e.target.value === '' ? '' : parseFloat(e.target.value),
+                    })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              {/* Ubicación */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="ubicacion">Ubicación</label>
+                <input
+                  type="text"
+                  id="ubicacion"
+                  value={formData.ubicacion}
+                  onChange={(e) => setFormData({ ...formData, ubicacion: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              {/* Fecha Ingreso */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="fechaIngreso">Fecha de Ingreso</label>
+                <input
+                  type="date"
+                  id="fechaIngreso"
+                  value={formData.fechaIngreso}
+                  onChange={(e) => setFormData({ ...formData, fechaIngreso: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+
+              {/* Estado */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="estado">Estado</label>
+                <select
+                  id="estado"
+                  value={formData.estado}
+                  onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  {estados.map(est => (
+                    <option key={est.value} value={est.value}>{est.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Descripción */}
+              <div>
+                <label className="block text-sm font-medium mb-1" htmlFor="descripcion">Descripción</label>
+                <textarea
+                  id="descripcion"
+                  value={formData.descripcion}
+                  onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+                  rows="3"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetForm();
+                    setIsModalOpen(false);
+                  }}
+                  className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  {editingItem ? 'Actualizar' : 'Agregar'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -586,3 +692,4 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
 };
 
 export default InventoryApp;
+

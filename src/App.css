@@ -747,3 +747,14 @@ button:disabled:hover {
   color: #9ca3af;
   pointer-events: none;
 }
+/* Ocultar flechas (spinners) en input type=number - Chrome, Safari, Edge */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* Ocultar flechas en Firefox */
+input[type=number] {
+  -moz-appearance: textfield;
+}
