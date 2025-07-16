@@ -1,43 +1,508 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="Web site created using create-react-app"
-    />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <!--
-      manifest.json provides metadata used when your web app is installed on a
-      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-    -->
-    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <!--
-      Notice the use of %PUBLIC_URL% in the tags above.
-      It will be replaced with the URL of the `public` folder during the build.
-      Only files inside the `public` folder can be referenced from the HTML.
-
-      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-      work correctly both with client-side routing and a non-root public URL.
-      Learn how to configure a non-root public URL by running `npm run build`.
-    -->
-    <title>React App</title>
-  </head>
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Inventario</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+                sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+    </style>
+</head>
+<body>
     <div id="root"></div>
-    <!--
-      This HTML file is a template.
-      If you open it directly in the browser, you will see an empty page.
 
-      You can add webfonts, meta tags, or analytics to this file.
-      The build step will place the bundled scripts into the <body> tag.
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+        const { Package, Plus, Search, Edit, Trash2, Save, X, AlertCircle } = lucide;
 
-      To begin the development, run `npm start` or `yarn start`.
-      To create a production bundle, use `npm run build` or `yarn build`.
-    -->
-  </body>
+        const InventoryApp = () => {
+            const [items, setItems] = useState([]);
+            const [searchTerm, setSearchTerm] = useState('');
+            const [isAddingItem, setIsAddingItem] = useState(false);
+            const [editingItem, setEditingItem] = useState(null);
+            const [newItem, setNewItem] = useState({
+                name: '',
+                category: '',
+                quantity: '',
+                minStock: '',
+                price: '',
+                location: ''
+            });
+
+            // Cargar datos del localStorage al iniciar
+            useEffect(() => {
+                const savedItems = localStorage.getItem('inventoryItems');
+                if (savedItems) {
+                    setItems(JSON.parse(savedItems));
+                }
+            }, []);
+
+            // Guardar en localStorage cuando cambian los items
+            useEffect(() => {
+                localStorage.setItem('inventoryItems', JSON.stringify(items));
+            }, [items]);
+
+            const categories = ['Electrónicos', 'Ropa', 'Hogar', 'Deportes', 'Libros', 'Otros'];
+
+            const filteredItems = items.filter(item =>
+                item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                item.category.toLowerCase().includes(searchTerm.toLowerCase())
+            );
+
+            const addItem = () => {
+                if (newItem.name && newItem.category && newItem.quantity) {
+                    const item = {
+                        id: Date.now(),
+                        ...newItem,
+                        quantity: parseInt(newItem.quantity),
+                        minStock: parseInt(newItem.minStock) || 0,
+                        price: parseFloat(newItem.price) || 0,
+                        createdAt: new Date().toLocaleDateString()
+                    };
+                    setItems([...items, item]);
+                    setNewItem({
+                        name: '',
+                        category: '',
+                        quantity: '',
+                        minStock: '',
+                        price: '',
+                        location: ''
+                    });
+                    setIsAddingItem(false);
+                }
+            };
+
+            const updateItem = (id, updatedItem) => {
+                setItems(items.map(item => 
+                    item.id === id 
+                        ? { 
+                            ...item, 
+                            ...updatedItem, 
+                            quantity: parseInt(updatedItem.quantity),
+                            minStock: parseInt(updatedItem.minStock) || 0,
+                            price: parseFloat(updatedItem.price) || 0
+                        }
+                        : item
+                ));
+                setEditingItem(null);
+            };
+
+            const deleteItem = (id) => {
+                setItems(items.filter(item => item.id !== id));
+            };
+
+            const getLowStockItems = () => {
+                return items.filter(item => item.quantity <= item.minStock);
+            };
+
+            const getTotalValue = () => {
+                return items.reduce((total, item) => total + (item.price * item.quantity), 0);
+            };
+
+            const ItemCard = ({ item }) => (
+                <div className="bg-white rounded-lg shadow-md p-6 border-l-4 border-blue-500">
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <h3 className="text-lg font-semibold text-gray-800">{item.name}</h3>
+                            <p className="text-sm text-gray-600">{item.category}</p>
+                        </div>
+                        <div className="flex space-x-2">
+                            <button
+                                onClick={() => setEditingItem(item)}
+                                className="p-2 text-gray-500 hover:text-blue-500 transition-colors"
+                            >
+                                <Edit size={16} />
+                            </button>
+                            <button
+                                onClick={() => deleteItem(item.id)}
+                                className="p-2 text-gray-500 hover:text-red-500 transition-colors"
+                            >
+                                <Trash2 size={16} />
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span className="text-gray-600">Cantidad:</span>
+                            <span className={`ml-2 font-medium ${item.quantity <= item.minStock ? 'text-red-600' : 'text-green-600'}`}>
+                                {item.quantity}
+                            </span>
+                            {item.quantity <= item.minStock && (
+                                <AlertCircle className="inline ml-1 text-red-500" size={16} />
+                            )}
+                        </div>
+                        <div>
+                            <span className="text-gray-600">Stock mínimo:</span>
+                            <span className="ml-2 font-medium">{item.minStock}</span>
+                        </div>
+                        <div>
+                            <span className="text-gray-600">Precio:</span>
+                            <span className="ml-2 font-medium">${item.price.toFixed(2)}</span>
+                        </div>
+                        <div>
+                            <span className="text-gray-600">Valor total:</span>
+                            <span className="ml-2 font-medium">${(item.price * item.quantity).toFixed(2)}</span>
+                        </div>
+                    </div>
+                    
+                    {item.location && (
+                        <div className="mt-2 text-sm">
+                            <span className="text-gray-600">Ubicación:</span>
+                            <span className="ml-2">{item.location}</span>
+                        </div>
+                    )}
+                    
+                    <div className="mt-2 text-xs text-gray-500">
+                        Agregado: {item.createdAt}
+                    </div>
+                </div>
+            );
+
+            const ItemForm = ({ item, onSave, onCancel }) => {
+                const [formData, setFormData] = useState(item || {
+                    name: '',
+                    category: '',
+                    quantity: '',
+                    minStock: '',
+                    price: '',
+                    location: ''
+                });
+
+                const handleSubmit = (e) => {
+                    e.preventDefault();
+                    if (formData.name && formData.category && formData.quantity) {
+                        onSave(formData);
+                    }
+                };
+
+                return (
+                    <div className="bg-white rounded-lg shadow-md p-6">
+                        <h3 className="text-lg font-semibold mb-4">
+                            {item ? 'Editar Producto' : 'Agregar Nuevo Producto'}
+                        </h3>
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Nombre del producto *
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="Ingrese el nombre del producto"
+                                    required
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Categoría *
+                                </label>
+                                <select
+                                    value={formData.category}
+                                    onChange={(e) => setFormData({...formData, category: e.target.value})}
+                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    required
+                                >
+                                    <option value="">Seleccione una categoría</option>
+                                    {categories.map(category => (
+                                        <option key={category} value={category}>{category}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Cantidad *
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={formData.quantity}
+                                        onChange={(e) => setFormData({...formData, quantity: e.target.value})}
+                                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="0"
+                                        min="0"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                        Stock mínimo
+                                    </label>
+                                    <input
+                                        type="number"
+                                        value={formData.minStock}
+                                        onChange={(e) => setFormData({...formData, minStock: e.target.value})}
+                                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        placeholder="0"
+                                        min="0"
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Precio unitario
+                                </label>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={formData.price}
+                                    onChange={(e) => setFormData({...formData, price: e.target.value})}
+                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="0.00"
+                                    min="0"
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                    Ubicación
+                                </label>
+                                <input
+                                    type="text"
+                                    value={formData.location}
+                                    onChange={(e) => setFormData({...formData, location: e.target.value})}
+                                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    placeholder="Ej: Almacén A, Estante 2"
+                                />
+                            </div>
+                            
+                            <div className="flex space-x-3 pt-4">
+                                <button
+                                    type="submit"
+                                    className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center"
+                                >
+                                    <Save size={16} className="mr-2" />
+                                    {item ? 'Actualizar' : 'Agregar'} Producto
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={onCancel}
+                                    className="flex-1 bg-gray-500 text-white py-2 px-4 rounded-md hover:bg-gray-600 transition-colors flex items-center justify-center"
+                                >
+                                    <X size={16} className="mr-2" />
+                                    Cancelar
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    <div className="max-w-7xl mx-auto p-6">
+                        {/* Header */}
+                        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center">
+                                    <Package className="text-blue-600 mr-3" size={32} />
+                                    <h1 className="text-3xl font-bold text-gray-800">Sistema de Inventario</h1>
+                                </div>
+                                <button
+                                    onClick={() => setIsAddingItem(true)}
+                                    className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors flex items-center"
+                                >
+                                    <Plus size={20} className="mr-2" />
+                                    Agregar Producto
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Stats */}
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+                            <div className="bg-white rounded-lg shadow-sm p-6">
+                                <div className="flex items-center">
+                                    <div className="p-3 bg-blue-100 rounded-full">
+                                        <Package className="text-blue-600" size={24} />
+                                    </div>
+                                    <div className="ml-4">
+                                        <p className="text-sm font-medium text-gray-600">Total Productos</p>
+                                        <p className="text-2xl font-bold text-gray-900">{items.length}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-white rounded-lg shadow-sm p-6">
+                                <div className="flex items-center">
+                                    <div className="p-3 bg-green-100 rounded-full">
+                                        <Package className="text-green-600" size={24} />
+                                    </div>
+                                    <div className="ml-4">
+                                        <p className="text-sm font-medium text-gray-600">Valor Total</p>
+                                        <p className="text-2xl font-bold text-gray-900">${getTotalValue().toFixed(2)}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-white rounded-lg shadow-sm p-6">
+                                <div className="flex items-center">
+                                    <div className="p-3 bg-yellow-100 rounded-full">
+                                        <AlertCircle className="text-yellow-600" size={24} />
+                                    </div>
+                                    <div className="ml-4">
+                                        <p className="text-sm font-medium text-gray-600">Stock Bajo</p>
+                                        <p className="text-2xl font-bold text-gray-900">{getLowStockItems().length}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-white rounded-lg shadow-sm p-6">
+                                <div className="flex items-center">
+                                    <div className="p-3 bg-purple-100 rounded-full">
+                                        <Package className="text-purple-600" size={24} />
+                                    </div>
+                                    <div className="ml-4">
+                                        <p className="text-sm font-medium text-gray-600">Categorías</p>
+                                        <p className="text-2xl font-bold text-gray-900">{new Set(items.map(item => item.category)).size}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Search */}
+                        <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                                <input
+                                    type="text"
+                                    placeholder="Buscar productos por nombre o categoría..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Add Item Form */}
+                        {isAddingItem && (
+                            <div className="mb-6">
+                                <ItemForm
+                                    onSave={(formData) => {
+                                        addItem(formData);
+                                        setIsAddingItem(false);
+                                    }}
+                                    onCancel={() => setIsAddingItem(false)}
+                                />
+                            </div>
+                        )}
+
+                        {/* Edit Item Form */}
+                        {editingItem && (
+                            <div className="mb-6">
+                                <ItemForm
+                                    item={editingItem}
+                                    onSave={(formData) => updateItem(editingItem.id, formData)}
+                                    onCancel={() => setEditingItem(null)}
+                                />
+                            </div>
+                        )}
+
+                        {/* Low Stock Alert */}
+                        {getLowStockItems().length > 0 && (
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+                                <div className="flex items-center">
+                                    <AlertCircle className="text-red-600 mr-2" size={20} />
+                                    <h3 className="text-red-800 font-medium">
+                                        Productos con stock bajo ({getLowStockItems().length})
+                                    </h3>
+                                </div>
+                                <div className="mt-2 text-sm text-red-700">
+                                    {getLowStockItems().map(item => item.name).join(', ')}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Items Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {filteredItems.map(item => (
+                                <ItemCard key={item.id} item={item} />
+                            ))}
+                        </div>
+
+                        {/* Empty State */}
+                        {filteredItems.length === 0 && (
+                            <div className="text-center py-12">
+                                <Package className="mx-auto text-gray-400 mb-4" size={48} />
+                                <h3 className="text-lg font-medium text-gray-900 mb-2">
+                                    {searchTerm ? 'No se encontraron productos' : 'No hay productos en el inventario'}
+                                </h3>
+                                <p className="text-gray-500 mb-6">
+                                    {searchTerm ? 'Intenta con otros términos de búsqueda' : 'Comienza agregando tu primer producto'}
+                                </p>
+                                {!searchTerm && (
+                                    <button
+                                        onClick={() => setIsAddingItem(true)}
+                                        className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition-colors flex items-center mx-auto"
+                                    >
+                                        <Plus size={20} className="mr-2" />
+                                        Agregar Primer Producto
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // Función para agregar datos de ejemplo
+        const addSampleData = () => {
+            const sampleItems = [
+                {
+                    id: 1,
+                    name: 'iPhone 14',
+                    category: 'Electrónicos',
+                    quantity: 5,
+                    minStock: 2,
+                    price: 999.99,
+                    location: 'Almacén A',
+                    createdAt: '2024-01-15'
+                },
+                {
+                    id: 2,
+                    name: 'Camiseta Nike',
+                    category: 'Ropa',
+                    quantity: 1,
+                    minStock: 5,
+                    price: 29.99,
+                    location: 'Almacén B',
+                    createdAt: '2024-01-16'
+                },
+                {
+                    id: 3,
+                    name: 'Silla de Oficina',
+                    category: 'Hogar',
+                    quantity: 10,
+                    minStock: 3,
+                    price: 199.99,
+                    location: 'Almacén C',
+                    createdAt: '2024-01-17'
+                }
+            ];
+            
+            localStorage.setItem('inventoryItems', JSON.stringify(sampleItems));
+            window.location.reload();
+        };
+
+        // Renderizar la aplicación
+        ReactDOM.render(<InventoryApp />, document.getElementById('root'));
+    </script>
+</body>
 </html>
