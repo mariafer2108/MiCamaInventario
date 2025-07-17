@@ -1,17 +1,26 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Download, Search, Package, TrendingUp, AlertTriangle, FileText } from 'lucide-react';
+import { Plus, Edit2, Trash2, Download, Search, Package, TrendingUp, AlertTriangle, ShoppingCart, DollarSign, Calendar } from 'lucide-react';
 import './App.css';
-import { fetchInventory, addItem, updateItem, deleteItemFromDB } from './supabaseService';
+import { fetchInventory, addItem, updateItem, deleteItemFromDB, sellProduct, fetchSales, deleteSaleFromDB } from './supabaseService';
+
 
 function App() {
+  
   const [inventory, setInventory] = useState([]);
+  const [sales, setSales] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentView, setCurrentView] = useState('inventory');
+  const [selectedLocation, setSelectedLocation] = useState('all');
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedMonth, setSelectedMonth] = useState('all');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [sellingItem, setSellingItem] = useState(null);
   const [formData, setFormData] = useState({
     codigo: '',
     nombre: '',
@@ -28,6 +37,13 @@ function App() {
     fechaIngreso: new Date().toISOString().split('T')[0],
     estado: 'disponible',
     descripcion: ''
+  });
+  const [saleData, setSaleData] = useState({
+    cantidadVendida: 1,
+    precioVenta: '',
+    cliente: '',
+    metodoPago: 'efectivo',
+    notas: ''
   });
 
   const categories = [
@@ -55,29 +71,67 @@ function App() {
     { value: 'dañado', label: 'Dañado' }
   ];
 
+  const paymentMethods = [
+    { value: 'efectivo', label: 'Efectivo' },
+    { value: 'debito', label: 'Debito' },
+    { value: 'credito', label: 'Credito' },
+  ];
+
+  const months = [
+    { value: 'all', label: 'Todos los meses' },
+    { value: '01', label: 'Enero' },
+    { value: '02', label: 'Febrero' },
+    { value: '03', label: 'Marzo' },
+    { value: '04', label: 'Abril' },
+    { value: '05', label: 'Mayo' },
+    { value: '06', label: 'Junio' },
+    { value: '07', label: 'Julio' },
+    { value: '08', label: 'Agosto' },
+    { value: '09', label: 'Septiembre' },
+    { value: '10', label: 'Octubre' },
+    { value: '11', label: 'Noviembre' },
+    { value: '12', label: 'Diciembre' }
+  ];
+const getUniqueLocations = () => {
+  const locations = [...new Set(inventory?.map(item => item.ubicacion).filter(Boolean))];
+  return [
+    { value: 'all', label: 'Todas las ubicaciones' },
+    ...locations.map(location => ({ value: location, label: location }))
+  ];
+};
+  const currentYear = new Date().getFullYear();
+  const years = [];
+  for (let i = currentYear - 5; i <= currentYear + 2; i++) {
+    years.push({ value: i.toString(), label: i.toString() });
+  }
+
   useEffect(() => {
-    const loadInventory = async () => {
+    const loadData = async () => {
       try {
         setIsLoading(true);
         setError(null);
-        const data = await fetchInventory();
-        setInventory(data || []);
+        const [inventoryData, salesData] = await Promise.all([
+          fetchInventory(),
+          fetchSales()
+        ]);
+        setInventory(inventoryData || []);
+        setSales(salesData || []);
       } catch (error) {
-        console.error('Error loading inventory:', error);
-        setError('Error al cargar el inventario. Por favor, recarga la página.');
+        console.error('Error loading data:', error);
+        setError('Error al cargar los datos. Por favor, recarga la página.');
         setInventory([]);
+        setSales([]);
       } finally {
         setIsLoading(false);
       }
     };
     
-    loadInventory();
+    loadData();
   }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Validación básica
     if (!formData.codigo || !formData.nombre) {
       alert('Por favor, completa al menos el código y nombre del artículo.');
       return;
@@ -117,7 +171,6 @@ function App() {
     } catch (error) {
       console.error('Error en handleSubmit:', error);
       
-      // Manejo específico de errores
       if (error.message?.includes('relation "inventory" does not exist')) {
         alert('Error: La tabla "inventory" no existe en Supabase. Por favor, créala usando el SQL proporcionado.');
       } else if (error.message?.includes('permission denied')) {
@@ -130,7 +183,46 @@ function App() {
     }
   };
 
-  // ... resto de las funciones ...
+  const handleSale = async (e) => {
+    e.preventDefault();
+
+    if (!sellingItem || saleData.cantidadVendida <= 0) {
+      alert('Por favor, verifica los datos de la venta.');
+      return;
+    }
+
+    if (saleData.cantidadVendida > sellingItem.cantidadstock) {
+      alert('No hay suficiente stock disponible.');
+      return;
+    }
+
+    try {
+      const saleInfo = {
+        cantidadVendida: parseInt(saleData.cantidadVendida),
+        precioVenta: saleData.precioVenta ? parseFloat(saleData.precioVenta) : sellingItem.precioventa,
+        cliente: saleData.cliente,
+        metodoPago: saleData.metodoPago,
+        notas: saleData.notas
+      };
+
+      await sellProduct(sellingItem.id, saleInfo);
+      
+      // Recargar datos
+      const [inventoryData, salesData] = await Promise.all([
+        fetchInventory(),
+        fetchSales()
+      ]);
+      setInventory(inventoryData);
+      setSales(salesData);
+      
+      alert('Venta registrada exitosamente.');
+      resetSaleForm();
+      setIsSaleModalOpen(false);
+    } catch (error) {
+      console.error('Error en handleSale:', error);
+      alert(`Error al procesar la venta: ${error.message || 'Error desconocido'}`);
+    }
+  };
 
   const resetForm = () => {
     setFormData({
@@ -153,6 +245,17 @@ function App() {
     setEditingItem(null);
   };
 
+  const resetSaleForm = () => {
+    setSaleData({
+      cantidadVendida: 1,
+      precioVenta: '',
+      cliente: '',
+      metodoPago: 'efectivo',
+      notas: ''
+    });
+    setSellingItem(null);
+  };
+
   const deleteItem = async (id) => {
     if (window.confirm('¿Estás seguro de que deseas eliminar este artículo?')) {
       try {
@@ -165,7 +268,19 @@ function App() {
       }
     }
   };
-
+  const deleteSale = async (saleId) => {
+    if (window.confirm('¿Estás seguro de que deseas eliminar esta venta?')) {
+      try {
+        await deleteSaleFromDB(saleId);
+        const salesData = await fetchSales();
+        setSales(salesData);
+        alert('Venta eliminada exitosamente.');
+      } catch (error) {
+        console.error('Error al eliminar la venta:', error);
+        alert('Hubo un error al eliminar la venta. Por favor, inténtalo de nuevo.');
+      }
+    }
+  };
   const editItem = (item) => {
     setFormData({
       codigo: item.codigo,
@@ -188,26 +303,75 @@ function App() {
     setIsModalOpen(true);
   };
 
-  // Proteger las funciones que usan inventory
-  const safeInventory = inventory || [];
-  const filteredInventory = safeInventory.filter(item => {
-    const matchesSearch = item?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item?.codigo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item?.proveedor?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || item?.categoria === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const sellItem = (item) => {
+    if (item.cantidadstock <= 0) {
+      alert('No hay stock disponible para este producto.');
+      return;
+    }
+    setSellingItem(item);
+    setSaleData({
+      cantidadVendida: 1,
+      precioVenta: item.precioventa,
+      cliente: '',
+      metodoPago: 'efectivo',
+      notas: ''
+    });
+    setIsSaleModalOpen(true);
+  };
 
-  const lowStockItems = safeInventory.filter(item => item?.cantidadstock <= item?.stockminimo);
-  const totalValue = safeInventory.reduce((sum, item) => sum + ((item?.cantidadstock || 0) * (item?.precioventa || 0)), 0);
-  const totalItems = safeInventory.reduce((sum, item) => sum + (item?.cantidadstock || 0), 0);
+  // Filtrar inventario por fecha de ingreso
+  const filterInventoryByDate = (items) => {
+    if (selectedMonth === 'all') return items;
+    
+    return items.filter(item => {
+      if (!item.fechaingreso) return false;
+      const itemDate = new Date(item.fechaingreso);
+      const itemYear = itemDate.getFullYear().toString();
+      const itemMonth = (itemDate.getMonth() + 1).toString().padStart(2, '0');
+      
+      return itemYear === selectedYear && itemMonth === selectedMonth;
+    });
+  };
+// Agregar esta función después de la función filterInventoryByDate (alrededor de la línea 338)
+const filterSalesByDate = (sales) => {
+  if (selectedMonth === 'all') return sales;
+  
+  return sales.filter(sale => {
+    if (!sale.fecha_venta) return false;
+    const saleDate = new Date(sale.fecha_venta);
+    const saleYear = saleDate.getFullYear().toString();
+    const saleMonth = (saleDate.getMonth() + 1).toString().padStart(2, '0');
+    
+    return saleYear === selectedYear && saleMonth === selectedMonth;
+  });
+};
+ const safeInventory = inventory || [];
+const dateFilteredInventory = filterInventoryByDate(safeInventory);
+const filteredInventory = dateFilteredInventory.filter(item => {
+  const matchesSearch = item?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item?.codigo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item?.proveedor?.toLowerCase().includes(searchTerm.toLowerCase());
+  const matchesCategory = selectedCategory === 'all' || item?.categoria === selectedCategory;
+  const matchesLocation = selectedLocation === 'all' || item?.ubicacion === selectedLocation;
+  return matchesSearch && matchesCategory && matchesLocation;
+});  
+  // Aplicar filtros a las ventas
+  const safeSales = sales || [];
+  const filteredSales = filterSalesByDate(safeSales);
+
+  const lowStockItems = dateFilteredInventory.filter(item => item?.cantidadstock <= item?.stockminimo);
+  const totalValue = dateFilteredInventory.reduce((sum, item) => sum + ((item?.cantidadstock || 0) * (item?.precioventa || 0)), 0);
+  const totalItems = dateFilteredInventory.reduce((sum, item) => sum + (item?.cantidadstock || 0), 0);
+  
+  // Estadísticas de ventas
+  const totalSales = filteredSales.reduce((sum, sale) => sum + (sale?.total_venta || 0), 0);
 
   const exportToCSV = () => {
     const headers = ['Código', 'Nombre', 'Categoría', 'Tamaño', 'Color', 'Material', 'Proveedor', 'Stock', 'Stock Mínimo', 'Precio Compra', 'Precio Venta', 'Ubicación', 'Fecha Ingreso', 'Estado', 'Descripción'];
 
     const csvContent = [
       headers.join(','),
-      ...inventory.map(item => [
+      ...filteredInventory.map(item => [
         item.codigo,
         item.nombre,
         item.categoria,
@@ -237,69 +401,41 @@ function App() {
     document.body.removeChild(link);
   };
 
-  const generateReport = () => {
-    const reportData = {
-      totalItems,
-      totalValue,
-      lowStockCount: lowStockItems.length,
-      categoryBreakdown: categories.slice(1).map(cat => ({
-        category: cat.label,
-        count: inventory.filter(item => item.categoria === cat.value).length,
-        value: inventory.filter(item => item.categoria === cat.value)
-          .reduce((sum, item) => sum + (item.cantidadstock * item.precioventa), 0)
-      })),
-      topProviders: [...new Set(inventory.map(item => item.proveedor))]
-        .map(provider => ({
-          provider,
-          count: inventory.filter(item => item.proveedor === provider).length
-        }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 5)
-    };
+  const exportSalesToCSV = () => {
+    const headers = ['Fecha', 'Código', 'Producto', 'Categoría', 'Cantidad', 'Precio Unitario', 'Total', 'Cliente', 'Método Pago'];
 
-    const reportContent = `REPORTE DE INVENTARIO - SÁBANAS Y COBERTORES
-============================================
+    const csvContent = [
+      headers.join(','),
+      ...filteredSales.map(sale => [
+        new Date(sale.fecha_venta).toLocaleDateString(),
+        sale.codigo,
+        sale.nombre,
+        sale.categoria,
+        sale.cantidad_vendida,
+        sale.precio_venta,
+        sale.total_venta,
+        sale.cliente || 'N/A',
+        sale.metodo_pago
+      ].join(','))
+    ].join('\n');
 
-RESUMEN GENERAL:
-- Total de artículos: ${reportData.totalItems}
-- Valor total del inventario: $${reportData.totalValue.toLocaleString()}
-- Artículos con stock bajo: ${reportData.lowStockCount}
-
-DESGLOSE POR CATEGORÍA:
-${reportData.categoryBreakdown.map(cat =>
-      `- ${cat.category}: ${cat.count} artículos (Valor: $${cat.value.toLocaleString()})`
-    ).join('\n')}
-
-PRINCIPALES PROVEEDORES:
-${reportData.topProviders.map(prov =>
-      `- ${prov.provider}: ${prov.count} artículos`
-    ).join('\n')}
-
-ARTÍCULOS CON STOCK BAJO:
-${lowStockItems.map(item =>
-      `- ${item.nombre} (${item.codigo}): ${item.cantidadstock} unidades (Mínimo: ${item.stockminimo})`
-    ).join('\n')}
-
-Fecha del reporte: ${new Date().toLocaleDateString()}`;
-
-    const blob = new Blob([reportContent], { type: 'text/plain;charset=utf-8;' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', 'reporte_inventario.txt');
+    link.setAttribute('download', 'ventas_sabanas_cobertores.csv');
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-    // Agregar renderizado condicional
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Cargando inventario...</p>
+          <p className="text-gray-600">Cargando datos...</p>
         </div>
       </div>
     );
@@ -338,6 +474,13 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                 Inventario
               </button>
               <button
+                onClick={() => setCurrentView('sales')}
+                className={`px-4 py-2 rounded-lg ${currentView === 'sales' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+              >
+                <ShoppingCart className="w-4 h-4 inline mr-2" />
+                Ventas
+              </button>
+              <button
                 onClick={() => setCurrentView('dashboard')}
                 className={`px-4 py-2 rounded-lg ${currentView === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
               >
@@ -350,6 +493,39 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Filtros de fecha para todas las vistas */}
+        <div className="mb-6 bg-white p-4 rounded-lg shadow">
+          <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-gray-500" />
+              <span className="text-sm font-medium text-gray-700">Filtrar por fecha:</span>
+            </div>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {years.map(year => (
+                <option key={year.value} value={year.value}>{year.label}</option>
+              ))}
+            </select>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {months.map(month => (
+                <option key={month.value} value={month.value}>{month.label}</option>
+              ))}
+            </select>
+            {selectedMonth !== 'all' && (
+              <span className="text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                {currentView === 'inventory' ? 'Inventario' : currentView === 'sales' ? 'Ventas' : 'Datos'} de {months.find(m => m.value === selectedMonth)?.label} {selectedYear}
+              </span>
+            )}
+          </div>
+        </div>
+
         {currentView === 'inventory' && (
           <>
             <div className="mb-6 flex flex-wrap gap-4 items-center justify-between">
@@ -364,15 +540,24 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                     className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {categories.map(cat => (
-                    <option key={cat.value} value={cat.value}>{cat.label}</option>
-                  ))}
-                </select>
+               <select
+  value={selectedCategory}
+  onChange={(e) => setSelectedCategory(e.target.value)}
+  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+>
+  {categories.map(cat => (
+    <option key={cat.value} value={cat.value}>{cat.label}</option>
+  ))}
+</select>
+<select
+  value={selectedLocation}
+  onChange={(e) => setSelectedLocation(e.target.value)}
+  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+>
+  {getUniqueLocations().map(location => (
+    <option key={location.value} value={location.value}>{location.label}</option>
+  ))}
+</select>
               </div>
               <div className="flex gap-2">
                 <button
@@ -383,13 +568,6 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                   Exportar CSV
                 </button>
                 <button
-                  onClick={generateReport}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
-                >
-                  <FileText className="w-4 h-4" />
-                  Generar Reporte
-                </button>
-                <button
                   onClick={() => setIsModalOpen(true)}
                   className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
                 >
@@ -397,6 +575,11 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                   Nuevo Artículo
                 </button>
               </div>
+            </div>
+
+            <div className="mb-4 text-sm text-gray-600">
+              Mostrando {filteredInventory.length} de {safeInventory.length} artículos
+              {selectedMonth !== 'all' && ` (ingresados en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear})`}
             </div>
 
             <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -442,18 +625,30 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <button
-                            onClick={() => editItem(item)}
-                            className="text-blue-600 hover:text-blue-900 mr-4"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => deleteItem(item.id)}
-                            className="text-red-600 hover:text-red-900"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => sellItem(item)}
+                              disabled={item.cantidadstock <= 0}
+                              className={`${item.cantidadstock > 0 ? 'text-green-600 hover:text-green-900' : 'text-gray-400 cursor-not-allowed'}`}
+                              title="Vender"
+                            >
+                              <DollarSign className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => editItem(item)}
+                              className="text-blue-600 hover:text-blue-900"
+                              title="Editar"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => deleteItem(item.id)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -464,53 +659,140 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
           </>
         )}
 
+        {currentView === 'sales' && (
+          <>
+            <div className="mb-6 flex justify-between items-center">
+              <h2 className="text-xl font-bold text-gray-900">Historial de Ventas</h2>
+              <button
+                onClick={exportSalesToCSV}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                Exportar Ventas
+              </button>
+            </div>
+
+            <div className="mb-4 text-sm text-gray-600">
+              Mostrando {filteredSales.length} de {safeSales.length} ventas
+              {selectedMonth !== 'all' && ` (realizadas en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear})`}
+            </div>
+                           <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="overflow-x-auto max-h-96 overflow-y-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Código</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Producto</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cantidad</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Precio Unit.</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cliente</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Método Pago</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {filteredSales.length === 0 ? (
+                      <tr>
+                        <td colSpan="9" className="px-6 py-8 text-center text-gray-500">
+                          {selectedMonth !== 'all' 
+                            ? `No hay ventas registradas en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`
+                            : 'No hay ventas registradas'
+                          }
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredSales.map((sale) => (
+                        <tr key={sale.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            {new Date(sale.fecha_venta).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{sale.codigo}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="text-sm font-medium text-gray-900">{sale.nombre}</div>
+                            <div className="text-sm text-gray-500">{sale.categoria} - {sale.tamaño}</div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sale.cantidad_vendida}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sale.precio_venta?.toLocaleString()}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${sale.total_venta?.toLocaleString()}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sale.cliente || 'N/A'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">{sale.metodo_pago}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button
+                              onClick={() => deleteSale(sale.id)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Eliminar venta"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+               </div>
+            </div>
+          </>
+        )}
+                
         {currentView === 'dashboard' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            <div className="bg-white p-6 rounded-lg shadow">
-              <div className="flex items-center">
-                <Package className="w-8 h-8 text-blue-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Total Artículos</p>
-                  <p className="text-2xl font-bold text-gray-900">{totalItems}</p>
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <div className="bg-white p-6 rounded-lg shadow">
+                <div className="flex items-center">
+                  <Package className="w-8 h-8 text-blue-600" />
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Total Artículos</p>
+                    <p className="text-2xl font-bold text-gray-900">{totalItems}</p>
+                    {selectedMonth !== 'all' && (
+                      <p className="text-xs text-gray-400">En {months.find(m => m.value === selectedMonth)?.label} {selectedYear}</p>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="bg-white p-6 rounded-lg shadow">
-              <div className="flex items-center">
-                <TrendingUp className="w-8 h-8 text-green-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Valor Total</p>
-                  <p className="text-2xl font-bold text-gray-900">${totalValue.toLocaleString()}</p>
+              <div className="bg-white p-6 rounded-lg shadow">
+                <div className="flex items-center">
+                  <TrendingUp className="w-8 h-8 text-green-600" />
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Valor Inventario</p>
+                    <p className="text-2xl font-bold text-gray-900">${totalValue.toLocaleString()}</p>
+                    {selectedMonth !== 'all' && (
+                      <p className="text-xs text-gray-400">En {months.find(m => m.value === selectedMonth)?.label} {selectedYear}</p>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="bg-white p-6 rounded-lg shadow">
-              <div className="flex items-center">
-                <AlertTriangle className="w-8 h-8 text-red-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Stock Bajo</p>
-                  <p className="text-2xl font-bold text-gray-900">{lowStockItems.length}</p>
+              <div className="bg-white p-6 rounded-lg shadow">
+                <div className="flex items-center">
+                  <DollarSign className="w-8 h-8 text-purple-600" />
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Total Ventas</p>
+                    <p className="text-2xl font-bold text-gray-900">${totalSales.toLocaleString()}</p>
+                    {selectedMonth !== 'all' && (
+                      <p className="text-xs text-gray-400">En {months.find(m => m.value === selectedMonth)?.label} {selectedYear}</p>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-            <div className="bg-white p-6 rounded-lg shadow">
-              <div className="flex items-center">
-                <FileText className="w-8 h-8 text-purple-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Categorías</p>
-                  <div className="text-sm text-gray-700 mt-2">
-                    {categories.slice(1).map(cat => (
-                      <div key={cat.value}>
-                        {cat.label}: {inventory.filter(item => item.categoria === cat.value).length} items
-                      </div>
-                    ))}
+              <div className="bg-white p-6 rounded-lg shadow">
+                <div className="flex items-center">
+                  <AlertTriangle className="w-8 h-8 text-red-600" />
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Stock Bajo</p>
+                    <p className="text-2xl font-bold text-gray-900">{lowStockItems.length}</p>
+                    {selectedMonth !== 'all' && (
+                      <p className="text-xs text-gray-400">Ingresados en {months.find(m => m.value === selectedMonth)?.label} {selectedYear}</p>
+                    )}
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          </>
         )}
       </div>
+      
 
       {/* Modal para agregar/editar */}
       {isModalOpen && (
@@ -518,200 +800,165 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
           <div className="bg-white rounded-lg w-full max-w-3xl p-6 overflow-y-auto max-h-[90vh]">
             <h2 className="text-xl font-bold mb-4">{editingItem ? 'Editar Artículo' : 'Nuevo Artículo'}</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Código */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="codigo">Código</label>
-                <input
-                  type="text"
-                  id="codigo"
-                  value={formData.codigo}
-                  onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="codigo">Código</label>
+                  <input
+                    type="text"
+                    id="codigo"
+                    value={formData.codigo}
+                    onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="nombre">Nombre</label>
+                  <input
+                    type="text"
+                    id="nombre"
+                    value={formData.nombre}
+                    onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="categoria">Categoría</label>
+                  <select
+                    id="categoria"
+                    value={formData.categoria}
+                    onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {categories.slice(1).map(cat => (
+                      <option key={cat.value} value={cat.value}>{cat.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="tamaño">Tamaño</label>
+                  <select
+                    id="tamaño"
+                    value={formData.tamaño}
+                    onChange={(e) => setFormData({ ...formData, tamaño: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {sizes.map(size => (
+                      <option key={size.value} value={size.value}>{size.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="color">Color</label>
+                  <input
+                    type="text"
+                    id="color"
+                    value={formData.color}
+                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="material">Material</label>
+                  <input
+                    type="text"
+                    id="material"
+                    value={formData.material}
+                    onChange={(e) => setFormData({ ...formData, material: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="proveedor">Proveedor</label>
+                  <input
+                    type="text"
+                    id="proveedor"
+                    value={formData.proveedor}
+                    onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="cantidadStock">Cantidad en Stock</label>
+                  <input
+                    type="number"
+                    id="cantidadStock"
+                    value={formData.cantidadStock}
+                    onChange={(e) => setFormData({ ...formData, cantidadStock: e.target.value })}
+                    min="0"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="stockMinimo">Stock Mínimo</label>
+                  <input
+                    type="number"
+                    id="stockMinimo"
+                    value={formData.stockMinimo}
+                    onChange={(e) => setFormData({ ...formData, stockMinimo: e.target.value })}
+                    min="0"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="precioCompra">Precio de Compra</label>
+                  <input
+                    type="number"
+                    id="precioCompra"
+                    value={formData.precioCompra}
+                    onChange={(e) => setFormData({ ...formData, precioCompra: e.target.value })}
+                    min="0"
+                    step="0.01"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="precioVenta">Precio de Venta</label>
+                  <input
+                    type="number"
+                    id="precioVenta"
+                    value={formData.precioVenta}
+                    onChange={(e) => setFormData({ ...formData, precioVenta: e.target.value })}
+                    min="0"
+                    step="0.01"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="ubicacion">Ubicación</label>
+                  <input
+                    type="text"
+                    id="ubicacion"
+                    value={formData.ubicacion}
+                    onChange={(e) => setFormData({ ...formData, ubicacion: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="fechaIngreso">Fecha de Ingreso</label>
+                  <input
+                    type="date"
+                    id="fechaIngreso"
+                    value={formData.fechaIngreso}
+                    onChange={(e) => setFormData({ ...formData, fechaIngreso: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="estado">Estado</label>
+                  <select
+                    id="estado"
+                    value={formData.estado}
+                    onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {estados.map(estado => (
+                      <option key={estado.value} value={estado.value}>{estado.label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
-
-              {/* Nombre */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="nombre">Nombre</label>
-                <input
-                  type="text"
-                  id="nombre"
-                  value={formData.nombre}
-                  onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                  required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Categoría */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="categoria">Categoría</label>
-                <select
-                  id="categoria"
-                  value={formData.categoria}
-                  onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  {categories.slice(1).map(cat => (
-                    <option key={cat.value} value={cat.value}>{cat.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Tamaño */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="tamaño">Tamaño</label>
-                <select
-                  id="tamaño"
-                  value={formData.tamaño}
-                  onChange={(e) => setFormData({ ...formData, tamaño: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  {sizes.map(size => (
-                    <option key={size.value} value={size.value}>{size.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Color */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="color">Color</label>
-                <input
-                  type="text"
-                  id="color"
-                  value={formData.color}
-                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Material */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="material">Material</label>
-                <input
-                  type="text"
-                  id="material"
-                  value={formData.material}
-                  onChange={(e) => setFormData({ ...formData, material: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Proveedor */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="proveedor">Proveedor</label>
-                <input
-                  type="text"
-                  id="proveedor"
-                  value={formData.proveedor}
-                  onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Cantidad Stock */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="cantidadStock">Cantidad en Stock</label>
-                <input
-                  type="number"
-                  id="cantidadStock"
-                  min="0"
-                  value={formData.cantidadStock}
-                  onChange={(e) => setFormData({ ...formData, cantidadStock: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-
-              {/* Stock Mínimo */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="stockMinimo">Stock Mínimo</label>
-                <input
-                  type="number"
-                  id="stockMinimo"
-                  min="0"
-                  value={formData.stockMinimo}
-                  onChange={(e) => setFormData({ ...formData, stockMinimo: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-
-              {/* Precio Compra */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="precioCompra">Precio Compra</label>
-                <input
-                  type="number"
-                  id="precioCompra"
-                  min="0"
-                  step="0.01"
-                  value={formData.precioCompra}
-                  onChange={(e) => setFormData({ ...formData, precioCompra: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-
-              {/* Precio Venta */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="precioVenta">Precio Venta</label>
-                <input
-                  type="number"
-                  id="precioVenta"
-                  min="0"
-                  step="0.01"
-                  value={formData.precioVenta}
-                  onChange={(e) => setFormData({ ...formData, precioVenta: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-
-              {/* Ubicación */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="ubicacion">Ubicación</label>
-                <input
-                  type="text"
-                  id="ubicacion"
-                  value={formData.ubicacion}
-                  onChange={(e) => setFormData({ ...formData, ubicacion: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
-              {/* Fecha Ingreso */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="fechaIngreso">Fecha de Ingreso</label>
-                <input
-                  type="date"
-                  id="fechaIngreso"
-                  value={formData.fechaIngreso}
-                  onChange={(e) => setFormData({ ...formData, fechaIngreso: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-
-              {/* Estado */}
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="estado">Estado</label>
-                <select
-                  id="estado"
-                  value={formData.estado}
-                  onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                >
-                  {estados.map(estado => (
-                    <option key={estado.value} value={estado.value}>{estado.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Descripción */}
               <div>
                 <label className="block text-sm font-medium mb-1" htmlFor="descripcion">Descripción</label>
                 <textarea
@@ -720,30 +967,130 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                   onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
                   rows="3"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Descripción adicional del producto..."
-                />
+                ></textarea>
               </div>
-
-              {/* Botones del formulario */}
-              <div className="flex justify-end space-x-4 pt-4">
+              <div className="flex justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => {
                     setIsModalOpen(false);
                     resetForm();
                   }}
-                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
                   {editingItem ? 'Actualizar' : 'Guardar'}
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para venta */}
+      {isSaleModalOpen && sellingItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-xl font-bold mb-4">Vender Producto</h2>
+              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-medium text-gray-900">{sellingItem.nombre}</h3>
+                <p className="text-sm text-gray-600">{sellingItem.codigo} - {sellingItem.categoria}</p>
+                <p className="text-sm text-gray-600">Stock disponible: {sellingItem.cantidadstock}</p>
+                <p className="text-sm text-gray-600">Precio: ${sellingItem.precioventa}</p>
+              </div>
+              <form onSubmit={handleSale} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="cantidadVendida">Cantidad a vender</label>
+                  <input
+                    type="number"
+                    id="cantidadVendida"
+                    value={saleData.cantidadVendida}
+                    onChange={(e) => setSaleData({ ...saleData, cantidadVendida: e.target.value })}
+                    min="1"
+                    max={sellingItem.cantidadstock}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="precioVentaModal">Precio de venta (opcional)</label>
+                  <input
+                    type="number"
+                    id="precioVentaModal"
+                    value={saleData.precioVenta}
+                    onChange={(e) => setSaleData({ ...saleData, precioVenta: e.target.value })}
+                    min="0"
+                    step="0.01"
+                    placeholder={`Precio por defecto: $${sellingItem.precioventa}`}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="cliente">Cliente (opcional)</label>
+                  <input
+                    type="text"
+                    id="cliente"
+                    value={saleData.cliente}
+                    onChange={(e) => setSaleData({ ...saleData, cliente: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="metodoPago">Método de pago</label>
+                  <select
+                    id="metodoPago"
+                    value={saleData.metodoPago}
+                    onChange={(e) => setSaleData({ ...saleData, metodoPago: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {paymentMethods.map(method => (
+                      <option key={method.value} value={method.value}>{method.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="notas">Notas (opcional)</label>
+                  <textarea
+                    id="notas"
+                    value={saleData.notas}
+                    onChange={(e) => setSaleData({ ...saleData, notas: e.target.value })}
+                    rows="2"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  ></textarea>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-lg">
+                  <p className="text-sm font-medium text-gray-900">
+                    Total: ${((saleData.precioVenta || sellingItem.precioventa) * saleData.cantidadVendida).toLocaleString()}
+                  </p>
+                </div>
+              </form>
+            </div>
+            {/* Botones fijos en la parte inferior */}
+            <div className="border-t bg-gray-50 px-6 py-4 flex justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSaleModalOpen(false);
+                  resetSaleForm();
+                }}
+                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                onClick={handleSale}
+                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700"
+              >
+                Confirmar Venta
+              </button>
+            </div>
           </div>
         </div>
       )}
