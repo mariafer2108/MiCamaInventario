@@ -1,23 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Download, Search, Package, TrendingUp, AlertTriangle, FileText } from 'lucide-react';
 import './App.css';
-import useLocalStorage from './useLocalStorage';
-import { createRoot } from 'react-dom/client'; 
-import App from './App';
+import { fetchInventory, addItem, updateItem, deleteItemFromDB } from './supabaseService';
 
-
-
-
-const InventoryApp = () => {
- const [inventory, setInventory] = useState(() => {
-  try {
-    const saved = localStorage.getItem('inventory');
-    return saved ? JSON.parse(saved) : [];
-  } catch (error) {
-    console.error('Error leyendo localStorage:', error);
-    return [];
-  }
-});
+function App() {
+  const [inventory, setInventory] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [currentView, setCurrentView] = useState('inventory');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -27,11 +16,11 @@ const InventoryApp = () => {
     codigo: '',
     nombre: '',
     categoria: 'Sábana',
-    tamaño: 'individual',
+    tamaño: '1 plaza',
     color: '',
     material: '',
     proveedor: '',
-    cantidadStock: '',    // vacíos para que no muestren 0
+    cantidadStock: '',
     stockMinimo: '',
     precioCompra: '',
     precioVenta: '',
@@ -66,43 +55,89 @@ const InventoryApp = () => {
     { value: 'dañado', label: 'Dañado' }
   ];
 
-
-useEffect(() => {
-  try {
-    localStorage.setItem('inventory', JSON.stringify(inventory));
-  } catch (error) {
-    console.error('Error guardando en localStorage:', error);
-  }
-}, [inventory]);
-
-const handleSubmit = () => {
-    const itemToSave = {
-      ...formData,
-      cantidadStock: parseInt(formData.cantidadStock) || 0,
-      stockMinimo: parseInt(formData.stockMinimo) || 0,
-      precioCompra: parseFloat(formData.precioCompra) || 0,
-      precioVenta: parseFloat(formData.precioVenta) || 0,
-      fechaIngreso: formData.fechaIngreso || new Date().toISOString().split('T')[0],
+  useEffect(() => {
+    const loadInventory = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const data = await fetchInventory();
+        setInventory(data || []);
+      } catch (error) {
+        console.error('Error loading inventory:', error);
+        setError('Error al cargar el inventario. Por favor, recarga la página.');
+        setInventory([]);
+      } finally {
+        setIsLoading(false);
+      }
     };
+    
+    loadInventory();
+  }, []);
 
-    if (editingItem) {
-      setInventory(inventory.map(item =>
-        item.id === editingItem.id ? { ...itemToSave, id: editingItem.id } : item
-      ));
-    } else {
-      setInventory([...inventory, { ...itemToSave, id: Date.now() }]);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    // Validación básica
+    if (!formData.codigo || !formData.nombre) {
+      alert('Por favor, completa al menos el código y nombre del artículo.');
+      return;
     }
 
-    resetForm();
-    setIsModalOpen(false);
+    const newItem = {
+      codigo: formData.codigo,
+      nombre: formData.nombre,
+      categoria: formData.categoria,
+      tamaño: formData.tamaño,
+      color: formData.color,
+      material: formData.material,
+      proveedor: formData.proveedor,
+      cantidadstock: formData.cantidadStock === '' ? 0 : parseInt(formData.cantidadStock),
+      stockminimo: formData.stockMinimo === '' ? 0 : parseInt(formData.stockMinimo),
+      preciocompra: formData.precioCompra === '' ? 0 : parseFloat(formData.precioCompra),
+      precioventa: formData.precioVenta === '' ? 0 : parseFloat(formData.precioVenta),
+      ubicacion: formData.ubicacion,
+      fechaingreso: formData.fechaIngreso,
+      estado: formData.estado,
+      descripcion: formData.descripcion,
+    };
+
+    try {
+      if (editingItem) {
+        await updateItem(editingItem.id, newItem);
+        alert('Artículo actualizado exitosamente.');
+      } else {
+        await addItem(newItem);
+        alert('Artículo agregado exitosamente.');
+      }
+
+      const data = await fetchInventory();
+      setInventory(data);
+      resetForm();
+      setIsModalOpen(false);
+    } catch (error) {
+      console.error('Error en handleSubmit:', error);
+      
+      // Manejo específico de errores
+      if (error.message?.includes('relation "inventory" does not exist')) {
+        alert('Error: La tabla "inventory" no existe en Supabase. Por favor, créala usando el SQL proporcionado.');
+      } else if (error.message?.includes('permission denied')) {
+        alert('Error de permisos: Verifica las políticas RLS de la tabla inventory.');
+      } else if (error.message?.includes('duplicate key')) {
+        alert('Error: Ya existe un artículo con ese código.');
+      } else {
+        alert(`Error al guardar el artículo: ${error.message || 'Error desconocido'}`);
+      }
+    }
   };
+
+  // ... resto de las funciones ...
 
   const resetForm = () => {
     setFormData({
       codigo: '',
       nombre: '',
       categoria: 'Sábana',
-      tamaño: 'individual',
+      tamaño: '1 plaza',
       color: '',
       material: '',
       proveedor: '',
@@ -118,36 +153,54 @@ const handleSubmit = () => {
     setEditingItem(null);
   };
 
-  const deleteItem = (id) => {
+  const deleteItem = async (id) => {
     if (window.confirm('¿Estás seguro de que deseas eliminar este artículo?')) {
-      setInventory(inventory.filter(item => item.id !== id));
+      try {
+        await deleteItemFromDB(id);
+        const data = await fetchInventory();
+        setInventory(data);
+      } catch (error) {
+        console.error('Error al eliminar el artículo:', error);
+        alert('Hubo un error al eliminar el artículo. Por favor, inténtalo de nuevo.');
+      }
     }
   };
 
   const editItem = (item) => {
-    // Para que no haya problemas al mostrar en inputs numéricos:
     setFormData({
-      ...item,
-      cantidadStock: item.cantidadStock === 0 ? '' : item.cantidadStock,
-      stockMinimo: item.stockMinimo === 0 ? '' : item.stockMinimo,
-      precioCompra: item.precioCompra === 0 ? '' : item.precioCompra,
-      precioVenta: item.precioVenta === 0 ? '' : item.precioVenta,
+      codigo: item.codigo,
+      nombre: item.nombre,
+      categoria: item.categoria,
+      tamaño: item.tamaño,
+      color: item.color,
+      material: item.material,
+      proveedor: item.proveedor,
+      cantidadStock: item.cantidadstock === 0 ? '' : item.cantidadstock,
+      stockMinimo: item.stockminimo === 0 ? '' : item.stockminimo,
+      precioCompra: item.preciocompra === 0 ? '' : item.preciocompra,
+      precioVenta: item.precioventa === 0 ? '' : item.precioventa,
+      ubicacion: item.ubicacion,
+      fechaIngreso: item.fechaingreso,
+      estado: item.estado,
+      descripcion: item.descripcion
     });
     setEditingItem(item);
     setIsModalOpen(true);
   };
 
-  const filteredInventory = inventory.filter(item => {
-    const matchesSearch = item.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.codigo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.proveedor.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || item.categoria === selectedCategory;
+  // Proteger las funciones que usan inventory
+  const safeInventory = inventory || [];
+  const filteredInventory = safeInventory.filter(item => {
+    const matchesSearch = item?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item?.codigo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item?.proveedor?.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'all' || item?.categoria === selectedCategory;
     return matchesSearch && matchesCategory;
   });
 
-  const lowStockItems = inventory.filter(item => item.cantidadStock <= item.stockMinimo);
-  const totalValue = inventory.reduce((sum, item) => sum + (item.cantidadStock * item.precioVenta), 0);
-  const totalItems = inventory.reduce((sum, item) => sum + item.cantidadStock, 0);
+  const lowStockItems = safeInventory.filter(item => item?.cantidadstock <= item?.stockminimo);
+  const totalValue = safeInventory.reduce((sum, item) => sum + ((item?.cantidadstock || 0) * (item?.precioventa || 0)), 0);
+  const totalItems = safeInventory.reduce((sum, item) => sum + (item?.cantidadstock || 0), 0);
 
   const exportToCSV = () => {
     const headers = ['Código', 'Nombre', 'Categoría', 'Tamaño', 'Color', 'Material', 'Proveedor', 'Stock', 'Stock Mínimo', 'Precio Compra', 'Precio Venta', 'Ubicación', 'Fecha Ingreso', 'Estado', 'Descripción'];
@@ -162,12 +215,12 @@ const handleSubmit = () => {
         item.color,
         item.material,
         item.proveedor,
-        item.cantidadStock,
-        item.stockMinimo,
-        item.precioCompra,
-        item.precioVenta,
+        item.cantidadstock,
+        item.stockminimo,
+        item.preciocompra,
+        item.precioventa,
         item.ubicacion,
-        item.fechaIngreso,
+        item.fechaingreso,
         item.estado,
         item.descripcion
       ].join(','))
@@ -193,7 +246,7 @@ const handleSubmit = () => {
         category: cat.label,
         count: inventory.filter(item => item.categoria === cat.value).length,
         value: inventory.filter(item => item.categoria === cat.value)
-          .reduce((sum, item) => sum + (item.cantidadStock * item.precioVenta), 0)
+          .reduce((sum, item) => sum + (item.cantidadstock * item.precioventa), 0)
       })),
       topProviders: [...new Set(inventory.map(item => item.proveedor))]
         .map(provider => ({
@@ -224,7 +277,7 @@ ${reportData.topProviders.map(prov =>
 
 ARTÍCULOS CON STOCK BAJO:
 ${lowStockItems.map(item =>
-      `- ${item.nombre} (${item.codigo}): ${item.cantidadStock} unidades (Mínimo: ${item.stockMinimo})`
+      `- ${item.nombre} (${item.codigo}): ${item.cantidadstock} unidades (Mínimo: ${item.stockminimo})`
     ).join('\n')}
 
 Fecha del reporte: ${new Date().toLocaleDateString()}`;
@@ -239,6 +292,36 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
     link.click();
     document.body.removeChild(link);
   };
+
+    // Agregar renderizado condicional
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Cargando inventario...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center bg-white p-8 rounded-lg shadow-md">
+          <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-900 mb-2">Error de Conexión</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Recargar Página
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -338,22 +421,23 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                           <div className="text-sm font-medium text-gray-900">{item.nombre}</div>
                           <div className="text-sm text-gray-500">{item.tamaño} - {item.color}</div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">{item.categoria.replace('_', ' ')}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">{item.categoria?.replace('_', ' ')}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
-                            <span className="text-sm text-gray-900">{item.cantidadStock}</span>
-                            {item.cantidadStock <= item.stockMinimo && (
+                            <span className="text-sm text-gray-900">{item.cantidadstock}</span>
+                            {item.cantidadstock <= item.stockminimo && (
                               <AlertTriangle className="w-4 h-4 text-red-500 ml-2" />
                             )}
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${item.precioVenta.toLocaleString()}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${item.precioventa?.toLocaleString()}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 text-xs rounded-full ${item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
-                              item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
-                                item.estado === 'vendido' ? 'bg-gray-100 text-gray-800' :
-                                  'bg-red-100 text-red-800'
-                            }`}>
+                          <span className={`px-2 py-1 text-xs rounded-full ${
+                            item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
+                            item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
+                            item.estado === 'vendido' ? 'bg-gray-100 text-gray-800' :
+                            'bg-red-100 text-red-800'
+                          }`}>
                             {item.estado}
                           </span>
                         </td>
@@ -414,13 +498,13 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                 <FileText className="w-8 h-8 text-purple-600" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-500">Categorías</p>
-                  <ul className="list-disc list-inside text-gray-700 mt-2">
+                  <div className="text-sm text-gray-700 mt-2">
                     {categories.slice(1).map(cat => (
-                      <li key={cat.value}>
+                      <div key={cat.value}>
                         {cat.label}: {inventory.filter(item => item.categoria === cat.value).length} items
-                      </li>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 </div>
               </div>
             </div>
@@ -433,13 +517,7 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
         <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg w-full max-w-3xl p-6 overflow-y-auto max-h-[90vh]">
             <h2 className="text-xl font-bold mb-4">{editingItem ? 'Editar Artículo' : 'Nuevo Artículo'}</h2>
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSubmit();
-              }}
-              className="space-y-4"
-            >
+            <form onSubmit={handleSubmit} className="space-y-4">
               {/* Código */}
               <div>
                 <label className="block text-sm font-medium mb-1" htmlFor="codigo">Código</label>
@@ -541,13 +619,8 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                   type="number"
                   id="cantidadStock"
                   min="0"
-                  value={formData.cantidadStock === 0 ? '' : formData.cantidadStock}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      cantidadStock: e.target.value === '' ? '' : parseInt(e.target.value),
-                    })
-                  }
+                  value={formData.cantidadStock}
+                  onChange={(e) => setFormData({ ...formData, cantidadStock: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
@@ -560,13 +633,8 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                   type="number"
                   id="stockMinimo"
                   min="0"
-                  value={formData.stockMinimo === 0 ? '' : formData.stockMinimo}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      stockMinimo: e.target.value === '' ? '' : parseInt(e.target.value),
-                    })
-                  }
+                  value={formData.stockMinimo}
+                  onChange={(e) => setFormData({ ...formData, stockMinimo: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
@@ -580,13 +648,8 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                   id="precioCompra"
                   min="0"
                   step="0.01"
-                  value={formData.precioCompra === 0 ? '' : formData.precioCompra}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      precioCompra: e.target.value === '' ? '' : parseFloat(e.target.value),
-                    })
-                  }
+                  value={formData.precioCompra}
+                  onChange={(e) => setFormData({ ...formData, precioCompra: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
@@ -600,13 +663,8 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                   id="precioVenta"
                   min="0"
                   step="0.01"
-                  value={formData.precioVenta === 0 ? '' : formData.precioVenta}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      precioVenta: e.target.value === '' ? '' : parseFloat(e.target.value),
-                    })
-                  }
+                  value={formData.precioVenta}
+                  onChange={(e) => setFormData({ ...formData, precioVenta: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
@@ -647,8 +705,8 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 >
-                  {estados.map(est => (
-                    <option key={est.value} value={est.value}>{est.label}</option>
+                  {estados.map(estado => (
+                    <option key={estado.value} value={estado.value}>{estado.label}</option>
                   ))}
                 </select>
               </div>
@@ -662,25 +720,27 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
                   onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
                   rows="3"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Descripción adicional del producto..."
                 />
               </div>
 
-              <div className="flex justify-end space-x-4">
+              {/* Botones del formulario */}
+              <div className="flex justify-end space-x-4 pt-4">
                 <button
                   type="button"
                   onClick={() => {
-                    resetForm();
                     setIsModalOpen(false);
+                    resetForm();
                   }}
-                  className="px-4 py-2 bg-gray-300 rounded-md hover:bg-gray-400"
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  {editingItem ? 'Actualizar' : 'Agregar'}
+                  {editingItem ? 'Actualizar' : 'Guardar'}
                 </button>
               </div>
             </form>
@@ -689,7 +749,6 @@ Fecha del reporte: ${new Date().toLocaleDateString()}`;
       )}
     </div>
   );
-};
+}
 
-export default InventoryApp;
-
+export default App;
