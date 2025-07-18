@@ -10,11 +10,13 @@ function App() {
   const [sales, setSales] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isInitialized, setIsInitialized] = useState(false);
   const [currentView, setCurrentView] = useState('inventory');
   const [selectedLocation, setSelectedLocation] = useState('all');
   
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedSize, setSelectedSize] = useState('all');
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -50,9 +52,11 @@ function App() {
     { value: 'Faldon', label: 'Faldón' },
     { value: 'Cubre_colchon', label: 'Cubre colchón' },
     { value: 'Plumones', label: 'Plumones' },
+    { value: 'Quilt', label: 'Quilts' },
   ];
 
   const sizes = [
+    { value: 'all', label: 'Todos los tamaños' },
     { value: '1 plaza', label: '1 plaza' },
     { value: '1 1/2 plaza', label: '1 1/2 plaza' },
     { value: '2 plazas', label: '2 plazas' },
@@ -89,15 +93,27 @@ function App() {
     { value: '12', label: 'Diciembre' }
   ];
 const getUniqueLocations = () => {
-  if (!inventory || !Array.isArray(inventory)) {
+  // Verificar si está inicializado y si inventory es válido
+  if (!isInitialized || !inventory || !Array.isArray(inventory) || inventory.length === 0) {
     return [{ value: 'all', label: 'Todas las ubicaciones' }];
   }
   
-  const locations = [...new Set(inventory.map(item => item?.ubicacion).filter(Boolean))];
-  return [
-    { value: 'all', label: 'Todas las ubicaciones' },
-    ...locations.map(location => ({ value: location, label: location }))
-  ];
+  try {
+    const locations = [...new Set(
+      inventory
+        .filter(item => item && typeof item === 'object')
+        .map(item => item.ubicacion)
+        .filter(location => location && typeof location === 'string' && location.trim() !== '')
+    )];
+    
+    return [
+      { value: 'all', label: 'Todas las ubicaciones' },
+      ...locations.map(location => ({ value: location, label: location }))
+    ];
+  } catch (error) {
+    console.error('Error in getUniqueLocations:', error);
+    return [{ value: 'all', label: 'Todas las ubicaciones' }];
+  }
 };
   const currentYear = new Date().getFullYear();
   const years = [];
@@ -122,6 +138,7 @@ const getUniqueLocations = () => {
         if (isMounted) {
           setInventory(Array.isArray(inventoryData) ? inventoryData : []);
           setSales(Array.isArray(salesData) ? salesData : []);
+          setIsInitialized(true);
         }
       } catch (error) {
         console.error('Error loading data:', error);
@@ -129,6 +146,7 @@ const getUniqueLocations = () => {
           setError('Error al cargar los datos. Por favor, recarga la página.');
           setInventory([]);
           setSales([]);
+          setIsInitialized(true);
         }
       } finally {
         if (isMounted) {
@@ -360,22 +378,28 @@ const filterSalesByDate = (sales) => {
     return saleYear === selectedYear && saleMonth === selectedMonth;
   });
 };
-const safeInventory = Array.isArray(inventory) ? inventory : [];
-const safeSales = Array.isArray(sales) ? sales : [];
+const safeInventory = Array.isArray(inventory) ? inventory.filter(item => item && typeof item === 'object') : [];
+const safeSales = Array.isArray(sales) ? sales.filter(sale => sale && typeof sale === 'object') : [];
 const dateFilteredInventory = filterInventoryByDate(safeInventory);
 const filteredInventory = dateFilteredInventory.filter(item => {
-  if (!item) return false;
+  if (!item || typeof item !== 'object') return false;
   
-  const matchesSearch = searchTerm === '' || 
-    (item.nombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (item.codigo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (item.categoria || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (item.color || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (item.proveedor || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (item.ubicacion || '').toLowerCase().includes(searchTerm.toLowerCase());
-  const matchesCategory = selectedCategory === 'all' || item.categoria === selectedCategory;
-  const matchesLocation = selectedLocation === 'all' || item.ubicacion === selectedLocation;
-  return matchesSearch && matchesCategory && matchesLocation;
+  try {
+    const matchesSearch = searchTerm === '' || 
+      (item.nombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.codigo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.categoria || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.color || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.proveedor || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (item.ubicacion || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesCategory = selectedCategory === 'all' || item.categoria === selectedCategory;
+    const matchesSize = selectedSize === 'all' || item.tamaño === selectedSize;
+    const matchesLocation = selectedLocation === 'all' || item.ubicacion === selectedLocation;
+    return matchesSearch && matchesCategory && matchesSize && matchesLocation;
+  } catch (error) {
+    console.error('Error filtering item:', item, error);
+    return false;
+  }
 });  
   // Aplicar filtros a las ventas
   const filteredSales = filterSalesByDate(safeSales);
@@ -527,12 +551,12 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
     document.body.removeChild(link);
   };
 
-  if (isLoading) {
+  if (!isInitialized || isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Cargando datos...</p>
+          <p className="text-gray-600">Cargando inventario...</p>
         </div>
       </div>
     );
@@ -541,15 +565,17 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center bg-white p-8 rounded-lg shadow-md">
-          <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">Error de Conexión</h2>
+        <div className="text-center">
+          <div className="text-red-600 mb-4">
+            <AlertTriangle className="w-12 h-12 mx-auto mb-2" />
+            <p className="text-lg font-semibold">Error al cargar los datos</p>
+          </div>
           <p className="text-gray-600 mb-4">{error}</p>
-          <button
-            onClick={() => window.location.reload()}
+          <button 
+            onClick={() => window.location.reload()} 
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
-            Recargar Página
+            Recargar página
           </button>
         </div>
       </div>
@@ -644,6 +670,15 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
 >
   {categories.map(cat => (
     <option key={cat.value} value={cat.value}>{cat.label}</option>
+  ))}
+</select>
+<select
+  value={selectedSize}
+  onChange={(e) => setSelectedSize(e.target.value)}
+  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+>
+  {sizes.map(size => (
+    <option key={size.value} value={size.value}>{size.label}</option>
   ))}
 </select>
 <select
