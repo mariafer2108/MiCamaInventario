@@ -1,6 +1,7 @@
 import { supabase } from './supabaseClient';
 
 // Obtener todos los productos del inventario
+// Mejorar fetchInventory
 export const fetchInventory = async () => {
   try {
     const { data, error } = await supabase
@@ -10,13 +11,33 @@ export const fetchInventory = async () => {
 
     if (error) {
       console.error('Error fetching inventory:', error);
-      return [];
+      throw new Error(`Error al obtener inventario: ${error.message}`);
     }
 
-    return data || [];
+    return Array.isArray(data) ? data : [];
   } catch (error) {
     console.error('Error in fetchInventory:', error);
-    return [];
+    throw error;
+  }
+};
+
+// Mejorar fetchSales
+export const fetchSales = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('sales')
+      .select('*')
+      .order('fecha_venta', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching sales:', error);
+      throw new Error(`Error al obtener ventas: ${error.message}`);
+    }
+
+    return Array.isArray(data) ? data : [];
+  } catch (error) {
+    console.error('Error in fetchSales:', error);
+    throw error;
   }
 };
 
@@ -26,16 +47,13 @@ export const addItem = async (item) => {
     const { data, error } = await supabase
       .from('inventory')
       .insert([{
-        codigo: item.codigo,
         nombre: item.nombre,
         categoria: item.categoria,
         tamaño: item.tamaño,
         color: item.color,
-        material: item.material,
         proveedor: item.proveedor,
         cantidadstock: item.cantidadstock,
         stockminimo: item.stockminimo,
-        preciocompra: item.preciocompra,
         precioventa: item.precioventa,
         ubicacion: item.ubicacion,
         fechaingreso: item.fechaingreso,
@@ -62,16 +80,13 @@ export const updateItem = async (id, item) => {
     const { data, error } = await supabase
       .from('inventory')
       .update({
-        codigo: item.codigo,
         nombre: item.nombre,
         categoria: item.categoria,
         tamaño: item.tamaño,
         color: item.color,
-        material: item.material,
         proveedor: item.proveedor,
         cantidadstock: item.cantidadstock,
         stockminimo: item.stockminimo,
-        preciocompra: item.preciocompra,
         precioventa: item.precioventa,
         ubicacion: item.ubicacion,
         fechaingreso: item.fechaingreso,
@@ -112,7 +127,6 @@ export const deleteItemFromDB = async (id) => {
     throw error;
   }
 };
-// ... existing code ...
 
 // Procesar venta de producto
 export const sellProduct = async (inventoryId, saleData) => {
@@ -154,7 +168,6 @@ export const sellProduct = async (inventoryId, saleData) => {
       .from('sales')
       .insert([{
         inventory_id: inventoryId,
-        codigo: product.codigo,
         nombre: product.nombre,
         categoria: product.categoria,
         tamaño: product.tamaño,
@@ -162,7 +175,6 @@ export const sellProduct = async (inventoryId, saleData) => {
         cantidad_vendida: saleData.cantidadVendida,
         precio_venta: saleData.precioVenta || product.precioventa,
         total_venta: (saleData.precioVenta || product.precioventa) * saleData.cantidadVendida,
-        cliente: saleData.cliente || '',
         metodo_pago: saleData.metodoPago || 'efectivo',
         notas: saleData.notas || ''
       }])
@@ -174,26 +186,6 @@ export const sellProduct = async (inventoryId, saleData) => {
   } catch (error) {
     console.error('Error in sellProduct:', error);
     throw error;
-  }
-};
-
-// Obtener historial de ventas
-export const fetchSales = async () => {
-  try {
-    const { data, error } = await supabase
-      .from('sales')
-      .select('*')
-      .order('fecha_venta', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching sales:', error);
-      return [];
-    }
-
-    return data || [];
-  } catch (error) {
-    console.error('Error in fetchSales:', error);
-    return [];
   }
 };
 
@@ -218,7 +210,6 @@ export const fetchSalesByDateRange = async (startDate, endDate) => {
     return [];
   }
 };
-// ... existing code ...
 
 // Eliminar una venta
 export const deleteSaleFromDB = async (saleId) => {

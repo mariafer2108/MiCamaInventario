@@ -22,16 +22,13 @@ function App() {
   const [editingItem, setEditingItem] = useState(null);
   const [sellingItem, setSellingItem] = useState(null);
   const [formData, setFormData] = useState({
-    codigo: '',
     nombre: '',
     categoria: 'Sábana',
     tamaño: '1 plaza',
     color: '',
-    material: '',
     proveedor: '',
     cantidadStock: '',
     stockMinimo: '',
-    precioCompra: '',
     precioVenta: '',
     ubicacion: '',
     fechaIngreso: new Date().toISOString().split('T')[0],
@@ -41,7 +38,6 @@ function App() {
   const [saleData, setSaleData] = useState({
     cantidadVendida: 1,
     precioVenta: '',
-    cliente: '',
     metodoPago: 'efectivo',
     notas: ''
   });
@@ -93,7 +89,11 @@ function App() {
     { value: '12', label: 'Diciembre' }
   ];
 const getUniqueLocations = () => {
-  const locations = [...new Set(inventory?.map(item => item.ubicacion).filter(Boolean))];
+  if (!inventory || !Array.isArray(inventory)) {
+    return [{ value: 'all', label: 'Todas las ubicaciones' }];
+  }
+  
+  const locations = [...new Set(inventory.map(item => item?.ubicacion).filter(Boolean))];
   return [
     { value: 'all', label: 'Todas las ubicaciones' },
     ...locations.map(location => ({ value: location, label: location }))
@@ -106,44 +106,68 @@ const getUniqueLocations = () => {
   }
 
   useEffect(() => {
+    let isMounted = true;
+    
     const loadData = async () => {
       try {
         setIsLoading(true);
         setError(null);
+        
         const [inventoryData, salesData] = await Promise.all([
           fetchInventory(),
           fetchSales()
         ]);
-        setInventory(inventoryData || []);
-        setSales(salesData || []);
+        
+        // Solo actualizar el estado si el componente sigue montado
+        if (isMounted) {
+          setInventory(Array.isArray(inventoryData) ? inventoryData : []);
+          setSales(Array.isArray(salesData) ? salesData : []);
+        }
       } catch (error) {
         console.error('Error loading data:', error);
-        setError('Error al cargar los datos. Por favor, recarga la página.');
-        setInventory([]);
-        setSales([]);
+        if (isMounted) {
+          setError('Error al cargar los datos. Por favor, recarga la página.');
+          setInventory([]);
+          setSales([]);
+        }
       } finally {
-        setIsLoading(false);
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
     
     loadData();
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.codigo || !formData.nombre) {
-      alert('Por favor, completa al menos el código y nombre del artículo.');
+    if (!formData.nombre) {
+      alert('Por favor, completa al menos el nombre del artículo.');
       return;
     }
 
+    // Generar código automáticamente si no existe
+    const generateCode = () => {
+      const prefix = formData.categoria.substring(0, 3).toUpperCase();
+      const timestamp = Date.now().toString().slice(-6);
+      const random = Math.floor(Math.random() * 100).toString().padStart(2, '0');
+      return `${prefix}-${timestamp}-${random}`;
+    };
+
     const newItem = {
-      codigo: formData.codigo,
+      codigo: editingItem ? editingItem.codigo : generateCode(), // Mantener código existente al editar
       nombre: formData.nombre,
       categoria: formData.categoria,
       tamaño: formData.tamaño,
       color: formData.color,
-      material: formData.material,
+      material: formData.material || '',
       proveedor: formData.proveedor,
       cantidadstock: formData.cantidadStock === '' ? 0 : parseInt(formData.cantidadStock),
       stockminimo: formData.stockMinimo === '' ? 0 : parseInt(formData.stockMinimo),
@@ -200,7 +224,6 @@ const getUniqueLocations = () => {
       const saleInfo = {
         cantidadVendida: parseInt(saleData.cantidadVendida),
         precioVenta: saleData.precioVenta ? parseFloat(saleData.precioVenta) : sellingItem.precioventa,
-        cliente: saleData.cliente,
         metodoPago: saleData.metodoPago,
         notas: saleData.notas
       };
@@ -226,16 +249,13 @@ const getUniqueLocations = () => {
 
   const resetForm = () => {
     setFormData({
-      codigo: '',
       nombre: '',
       categoria: 'Sábana',
       tamaño: '1 plaza',
       color: '',
-      material: '',
       proveedor: '',
       cantidadStock: '',
       stockMinimo: '',
-      precioCompra: '',
       precioVenta: '',
       ubicacion: '',
       fechaIngreso: new Date().toISOString().split('T')[0],
@@ -249,7 +269,6 @@ const getUniqueLocations = () => {
     setSaleData({
       cantidadVendida: 1,
       precioVenta: '',
-      cliente: '',
       metodoPago: 'efectivo',
       notas: ''
     });
@@ -283,16 +302,13 @@ const getUniqueLocations = () => {
   };
   const editItem = (item) => {
     setFormData({
-      codigo: item.codigo,
       nombre: item.nombre,
       categoria: item.categoria,
       tamaño: item.tamaño,
       color: item.color,
-      material: item.material,
       proveedor: item.proveedor,
       cantidadStock: item.cantidadstock === 0 ? '' : item.cantidadstock,
       stockMinimo: item.stockminimo === 0 ? '' : item.stockminimo,
-      precioCompra: item.preciocompra === 0 ? '' : item.preciocompra,
       precioVenta: item.precioventa === 0 ? '' : item.precioventa,
       ubicacion: item.ubicacion,
       fechaIngreso: item.fechaingreso,
@@ -312,7 +328,6 @@ const getUniqueLocations = () => {
     setSaleData({
       cantidadVendida: 1,
       precioVenta: item.precioventa,
-      cliente: '',
       metodoPago: 'efectivo',
       notas: ''
     });
@@ -345,85 +360,167 @@ const filterSalesByDate = (sales) => {
     return saleYear === selectedYear && saleMonth === selectedMonth;
   });
 };
- const safeInventory = inventory || [];
+const safeInventory = Array.isArray(inventory) ? inventory : [];
+const safeSales = Array.isArray(sales) ? sales : [];
 const dateFilteredInventory = filterInventoryByDate(safeInventory);
 const filteredInventory = dateFilteredInventory.filter(item => {
-  const matchesSearch = item?.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item?.codigo?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item?.proveedor?.toLowerCase().includes(searchTerm.toLowerCase());
-  const matchesCategory = selectedCategory === 'all' || item?.categoria === selectedCategory;
-  const matchesLocation = selectedLocation === 'all' || item?.ubicacion === selectedLocation;
+  if (!item) return false;
+  
+  const matchesSearch = searchTerm === '' || 
+    (item.nombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (item.codigo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (item.categoria || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (item.color || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (item.proveedor || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (item.ubicacion || '').toLowerCase().includes(searchTerm.toLowerCase());
+  const matchesCategory = selectedCategory === 'all' || item.categoria === selectedCategory;
+  const matchesLocation = selectedLocation === 'all' || item.ubicacion === selectedLocation;
   return matchesSearch && matchesCategory && matchesLocation;
 });  
   // Aplicar filtros a las ventas
-  const safeSales = sales || [];
   const filteredSales = filterSalesByDate(safeSales);
 
-  const lowStockItems = dateFilteredInventory.filter(item => item?.cantidadstock <= item?.stockminimo);
-  const totalValue = dateFilteredInventory.reduce((sum, item) => sum + ((item?.cantidadstock || 0) * (item?.precioventa || 0)), 0);
-  const totalItems = dateFilteredInventory.reduce((sum, item) => sum + (item?.cantidadstock || 0), 0);
+  const lowStockItems = dateFilteredInventory.filter(item => 
+    item && typeof item.cantidadstock === 'number' && typeof item.stockminimo === 'number' && 
+    item.cantidadstock <= item.stockminimo
+  );
+  
+  const totalValue = dateFilteredInventory.reduce((sum, item) => {
+    if (!item || typeof item.cantidadstock !== 'number' || typeof item.precioventa !== 'number') {
+      return sum;
+    }
+    return sum + (item.cantidadstock * item.precioventa);
+  }, 0);
+  
+  const totalItems = dateFilteredInventory.reduce((sum, item) => {
+    if (!item || typeof item.cantidadstock !== 'number') {
+      return sum;
+    }
+    return sum + item.cantidadstock;
+  }, 0);
   
   // Estadísticas de ventas
-  const totalSales = filteredSales.reduce((sum, sale) => sum + (sale?.total_venta || 0), 0);
+  const totalSales = filteredSales.reduce((sum, sale) => {
+    if (!sale || typeof sale.total_venta !== 'number') {
+      return sum;
+    }
+    return sum + sale.total_venta;
+  }, 0);
 
-  const exportToCSV = () => {
-    const headers = ['Código', 'Nombre', 'Categoría', 'Tamaño', 'Color', 'Material', 'Proveedor', 'Stock', 'Stock Mínimo', 'Precio Compra', 'Precio Venta', 'Ubicación', 'Fecha Ingreso', 'Estado', 'Descripción'];
+  const exportToTXT = () => {
+    const currentDate = new Date().toLocaleDateString('es-ES');
+    const currentTime = new Date().toLocaleTimeString('es-ES');
+    
+    // Crear encabezado bonito
+    const header = `
+===============================================
+           INVENTARIO SÁBANAS Y COBERTORES
+===============================================
+Fecha de exportación: ${currentDate} - ${currentTime}
+Total de productos: ${filteredInventory.length}
+===============================================
 
-    const csvContent = [
-      headers.join(','),
-      ...filteredInventory.map(item => [
-        item.codigo,
-        item.nombre,
-        item.categoria,
-        item.tamaño,
-        item.color,
-        item.material,
-        item.proveedor,
-        item.cantidadstock,
-        item.stockminimo,
-        item.preciocompra,
-        item.precioventa,
-        item.ubicacion,
-        item.fechaingreso,
-        item.estado,
-        item.descripcion
-      ].join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+`;
+    
+    // Formatear datos con espaciado fijo
+    const formatField = (value, width) => {
+      const str = (value || 'N/A').toString();
+      return str.length > width ? str.substring(0, width-3) + '...' : str.padEnd(width);
+    };
+    
+    const headers = `${'NOMBRE'.padEnd(25)} | ${'CATEGORÍA'.padEnd(15)} | ${'TAMAÑO'.padEnd(12)} | ${'COLOR'.padEnd(15)} | ${'STOCK'.padEnd(8)} | ${'PRECIO'.padEnd(10)} | ${'UBICACIÓN'.padEnd(15)} | ${'ESTADO'.padEnd(12)}`;
+    const separator = '='.repeat(headers.length);
+    
+    const rows = filteredInventory.map(item => 
+      `${formatField(item.nombre, 25)} | ${formatField(item.categoria, 15)} | ${formatField(item.tamaño, 12)} | ${formatField(item.color, 15)} | ${formatField(item.cantidadstock, 8)} | ${formatField(`$${item.precioventa}`, 10)} | ${formatField(item.ubicacion, 15)} | ${formatField(item.estado, 12)}`
+    );
+    
+    const footer = `\n\n===============================================\nResumen por categoría:\n===============================================\n`;
+    
+    // Crear resumen por categoría
+    const categoryStats = {};
+    filteredInventory.forEach(item => {
+      if (!categoryStats[item.categoria]) {
+        categoryStats[item.categoria] = { count: 0, totalStock: 0 };
+      }
+      categoryStats[item.categoria].count++;
+      categoryStats[item.categoria].totalStock += parseInt(item.cantidadstock) || 0;
+    });
+    
+    const categoryReport = Object.entries(categoryStats)
+      .map(([category, stats]) => `${category.padEnd(20)}: ${stats.count.toString().padStart(3)} productos | Stock total: ${stats.totalStock.toString().padStart(4)}`)
+      .join('\n');
+    
+    const txtContent = header + headers + '\n' + separator + '\n' + rows.join('\n') + footer + categoryReport + '\n\n===============================================\nFin del reporte\n===============================================';
+    
+    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', 'inventario_sabanas_cobertores.csv');
+    link.setAttribute('download', `inventario_${currentDate.replace(/\//g, '-')}.txt`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const exportSalesToCSV = () => {
-    const headers = ['Fecha', 'Código', 'Producto', 'Categoría', 'Cantidad', 'Precio Unitario', 'Total', 'Cliente', 'Método Pago'];
+  const exportSalesToTXT = () => {
+    const currentDate = new Date().toLocaleDateString('es-ES');
+    const currentTime = new Date().toLocaleTimeString('es-ES');
+    
+    // Crear encabezado bonito
+    const header = `
+===============================================
+              REPORTE DE VENTAS
+===============================================
+Fecha de exportación: ${currentDate} - ${currentTime}
+Total de ventas: ${filteredSales.length}
+Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth)?.label + ' ' + selectedYear : 'Todas las fechas'}
+===============================================
 
-    const csvContent = [
-      headers.join(','),
-      ...filteredSales.map(sale => [
-        new Date(sale.fecha_venta).toLocaleDateString(),
-        sale.codigo,
-        sale.nombre,
-        sale.categoria,
-        sale.cantidad_vendida,
-        sale.precio_venta,
-        sale.total_venta,
-        sale.cliente || 'N/A',
-        sale.metodo_pago
-      ].join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+`;
+    
+    // Formatear datos con espaciado fijo
+    const formatField = (value, width) => {
+      const str = (value || 'N/A').toString();
+      return str.length > width ? str.substring(0, width-3) + '...' : str.padEnd(width);
+    };
+    
+    const headers = `${'FECHA'.padEnd(12)} | ${'PRODUCTO'.padEnd(25)} | ${'CATEGORÍA'.padEnd(15)} | ${'CANT.'.padEnd(6)} | ${'P.UNIT'.padEnd(10)} | ${'TOTAL'.padEnd(10)} | ${'PAGO'.padEnd(10)}`;
+    const separator = '='.repeat(headers.length);
+    
+    const rows = filteredSales.map(sale => 
+      `${formatField(new Date(sale.fecha_venta).toLocaleDateString('es-ES'), 12)} | ${formatField(sale.nombre, 25)} | ${formatField(sale.categoria, 15)} | ${formatField(sale.cantidad_vendida, 6)} | ${formatField(`$${sale.precio_venta}`, 10)} | ${formatField(`$${sale.total_venta}`, 10)} | ${formatField(sale.metodo_pago, 10)}`
+    );
+    
+    // Calcular totales
+    const totalVentas = filteredSales.reduce((sum, sale) => sum + (parseFloat(sale.total_venta) || 0), 0);
+    const totalProductos = filteredSales.reduce((sum, sale) => sum + (parseInt(sale.cantidad_vendida) || 0), 0);
+    
+    const footer = `\n\n===============================================\nRESUMEN DE VENTAS\n===============================================\nTotal productos vendidos: ${totalProductos}\nTotal en ventas: $${totalVentas.toFixed(2)}\nPromedio por venta: $${(totalVentas / filteredSales.length || 0).toFixed(2)}\n\n`;
+    
+    // Resumen por método de pago
+    const paymentStats = {};
+    filteredSales.forEach(sale => {
+      if (!paymentStats[sale.metodo_pago]) {
+        paymentStats[sale.metodo_pago] = { count: 0, total: 0 };
+      }
+      paymentStats[sale.metodo_pago].count++;
+      paymentStats[sale.metodo_pago].total += parseFloat(sale.total_venta) || 0;
+    });
+    
+    const paymentReport = 'Ventas por método de pago:\n' + 
+      Object.entries(paymentStats)
+        .map(([method, stats]) => `${method.padEnd(15)}: ${stats.count.toString().padStart(3)} ventas | Total: $${stats.total.toFixed(2).padStart(10)}`)
+        .join('\n');
+    
+    const txtContent = header + headers + '\n' + separator + '\n' + rows.join('\n') + footer + paymentReport + '\n\n===============================================\nFin del reporte\n===============================================';
+    
+    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', 'ventas_sabanas_cobertores.csv');
+    link.setAttribute('download', `ventas_${currentDate.replace(/\//g, '-')}.txt`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -528,7 +625,7 @@ const filteredInventory = dateFilteredInventory.filter(item => {
 
         {currentView === 'inventory' && (
           <>
-            <div className="mb-6 flex flex-wrap gap-4 items-center justify-between">
+            <div className="mb-6 flex flex-wrap gap-4 items-center justify-between filter-controls">
               <div className="flex gap-4 items-center">
                 <div className="relative">
                   <Search className="w-5 h-5 absolute left-3 top-3 text-gray-400" />
@@ -559,13 +656,13 @@ const filteredInventory = dateFilteredInventory.filter(item => {
   ))}
 </select>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 action-buttons">
                 <button
-                  onClick={exportToCSV}
+                  onClick={exportToTXT}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
                 >
                   <Download className="w-4 h-4" />
-                  Exportar CSV
+                  Exportar TXT
                 </button>
                 <button
                   onClick={() => setIsModalOpen(true)}
@@ -583,11 +680,10 @@ const filteredInventory = dateFilteredInventory.filter(item => {
             </div>
 
             <div className="bg-white rounded-lg shadow overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto table-scroll table-responsive">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Código</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Producto</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Categoría</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
@@ -597,61 +693,76 @@ const filteredInventory = dateFilteredInventory.filter(item => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredInventory.map((item) => (
-                      <tr key={item.id} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.codigo}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm font-medium text-gray-900">{item.nombre}</div>
-                          <div className="text-sm text-gray-500">{item.tamaño} - {item.color}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">{item.categoria?.replace('_', ' ')}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <span className="text-sm text-gray-900">{item.cantidadstock}</span>
-                            {item.cantidadstock <= item.stockminimo && (
-                              <AlertTriangle className="w-4 h-4 text-red-500 ml-2" />
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${item.precioventa?.toLocaleString()}</td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 text-xs rounded-full ${
-                            item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
-                            item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
-                            item.estado === 'vendido' ? 'bg-gray-100 text-gray-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {item.estado}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => sellItem(item)}
-                              disabled={item.cantidadstock <= 0}
-                              className={`${item.cantidadstock > 0 ? 'text-green-600 hover:text-green-900' : 'text-gray-400 cursor-not-allowed'}`}
-                              title="Vender"
-                            >
-                              <DollarSign className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => editItem(item)}
-                              className="text-blue-600 hover:text-blue-900"
-                              title="Editar"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => deleteItem(item.id)}
-                              className="text-red-600 hover:text-red-900"
-                              title="Eliminar"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                    {filteredInventory.length === 0 ? (
+                      <tr>
+                        <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
+                          {isLoading ? 'Cargando inventario...' : 'No hay productos que coincidan con los filtros'}
                         </td>
                       </tr>
-                    ))}
+                    ) : (
+                      filteredInventory.map((item) => {
+                        if (!item || !item.id) return null;
+                        
+                        return (
+                          <tr key={item.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">{item.nombre || 'Sin nombre'}</div>
+                              <div className="text-sm text-gray-500">{item.codigo || 'N/A'} - {item.tamaño || ''} - {item.color || ''}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">
+                              {item.categoria?.replace('_', ' ') || 'Sin categoría'}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <span className="text-sm text-gray-900">{item.cantidadstock || 0}</span>
+                                {(item.cantidadstock || 0) <= (item.stockminimo || 0) && (
+                                  <AlertTriangle className="w-4 h-4 text-red-500 ml-2" />
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              ${(item.precioventa || 0).toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`px-2 py-1 text-xs rounded-full ${
+                                item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
+                                item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
+                                item.estado === 'vendido' ? 'bg-gray-100 text-gray-800' :
+                                'bg-red-100 text-red-800'
+                              }`}>
+                                {item.estado || 'Sin estado'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => sellItem(item)}
+                                  disabled={(item.cantidadstock || 0) <= 0}
+                                  className={`${(item.cantidadstock || 0) > 0 ? 'text-green-600 hover:text-green-900' : 'text-gray-400 cursor-not-allowed'}`}
+                                  title="Vender"
+                                >
+                                  <DollarSign className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => editItem(item)}
+                                  className="text-blue-600 hover:text-blue-900"
+                                  title="Editar"
+                                >
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => deleteItem(item.id)}
+                                  className="text-red-600 hover:text-red-900"
+                                  title="Eliminar"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -663,13 +774,15 @@ const filteredInventory = dateFilteredInventory.filter(item => {
           <>
             <div className="mb-6 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-900">Historial de Ventas</h2>
-              <button
-                onClick={exportSalesToCSV}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" />
-                Exportar Ventas
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={exportSalesToTXT}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Exportar TXT
+                </button>
+              </div>
             </div>
 
             <div className="mb-4 text-sm text-gray-600">
@@ -682,12 +795,10 @@ const filteredInventory = dateFilteredInventory.filter(item => {
                   <thead className="bg-gray-50 sticky top-0">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Código</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Producto</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cantidad</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Precio Unit.</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cliente</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Método Pago</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
                     </tr>
@@ -695,7 +806,7 @@ const filteredInventory = dateFilteredInventory.filter(item => {
                   <tbody className="bg-white divide-y divide-gray-200">
                     {filteredSales.length === 0 ? (
                       <tr>
-                        <td colSpan="9" className="px-6 py-8 text-center text-gray-500">
+                        <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
                           {selectedMonth !== 'all' 
                             ? `No hay ventas registradas en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`
                             : 'No hay ventas registradas'
@@ -705,10 +816,9 @@ const filteredInventory = dateFilteredInventory.filter(item => {
                     ) : (
                       filteredSales.map((sale) => (
                         <tr key={sale.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            {new Date(sale.fecha_venta).toLocaleDateString()}
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(sale.fecha_venta).toLocaleDateString('es-ES')}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{sale.codigo}</td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">{sale.nombre}</div>
                             <div className="text-sm text-gray-500">{sale.categoria} - {sale.tamaño}</div>
@@ -716,7 +826,6 @@ const filteredInventory = dateFilteredInventory.filter(item => {
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sale.cantidad_vendida}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sale.precio_venta?.toLocaleString()}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${sale.total_venta?.toLocaleString()}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sale.cliente || 'N/A'}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">{sale.metodo_pago}</td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                             <button
@@ -802,17 +911,6 @@ const filteredInventory = dateFilteredInventory.filter(item => {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="codigo">Código</label>
-                  <input
-                    type="text"
-                    id="codigo"
-                    value={formData.codigo}
-                    onChange={(e) => setFormData({ ...formData, codigo: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
                   <label className="block text-sm font-medium mb-1" htmlFor="nombre">Nombre</label>
                   <input
                     type="text"
@@ -860,16 +958,6 @@ const filteredInventory = dateFilteredInventory.filter(item => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="material">Material</label>
-                  <input
-                    type="text"
-                    id="material"
-                    value={formData.material}
-                    onChange={(e) => setFormData({ ...formData, material: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
                   <label className="block text-sm font-medium mb-1" htmlFor="proveedor">Proveedor</label>
                   <input
                     type="text"
@@ -898,18 +986,6 @@ const filteredInventory = dateFilteredInventory.filter(item => {
                     value={formData.stockMinimo}
                     onChange={(e) => setFormData({ ...formData, stockMinimo: e.target.value })}
                     min="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="precioCompra">Precio de Compra</label>
-                  <input
-                    type="number"
-                    id="precioCompra"
-                    value={formData.precioCompra}
-                    onChange={(e) => setFormData({ ...formData, precioCompra: e.target.value })}
-                    min="0"
-                    step="0.01"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -1028,16 +1104,6 @@ const filteredInventory = dateFilteredInventory.filter(item => {
                     min="0"
                     step="0.01"
                     placeholder={`Precio por defecto: $${sellingItem.precioventa}`}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="cliente">Cliente (opcional)</label>
-                  <input
-                    type="text"
-                    id="cliente"
-                    value={saleData.cliente}
-                    onChange={(e) => setSaleData({ ...saleData, cliente: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
