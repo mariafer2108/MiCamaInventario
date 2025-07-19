@@ -5,17 +5,54 @@ import { fetchInventory, addItem, updateItem, deleteItemFromDB, sellProduct, fet
 import { supabase } from './supabaseClient';
 import Login from './Login';
 
+// ===== COMPONENTES DE PRELOADER Y SKELETON =====
+
+// Componente Preloader
+const PreloaderComponent = ({ showPreloader }) => {
+  return (
+    <div className={`app-preloader ${!showPreloader ? 'fade-out' : ''}`}>
+      <div className="preloader-logo gpu-accelerated">
+        <Package className="w-8 h-8 text-blue-600" />
+      </div>
+      <div className="preloader-spinner"></div>
+      <div className="preloader-text">MiCama Inventory</div>
+      <div className="preloader-subtext">Cargando sistema...</div>
+    </div>
+  );
+};
+
+// Componente Skeleton
+const SkeletonLoader = () => {
+  return (
+    <div className="skeleton-container">
+      <div className="skeleton-header"></div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="skeleton-card"></div>
+        <div className="skeleton-card"></div>
+        <div className="skeleton-card"></div>
+        <div className="skeleton-card"></div>
+      </div>
+      <div className="skeleton-table"></div>
+    </div>
+  );
+};
 
 function App() {
-  // Estados de autenticación
+  // Estados de autenticación optimizados
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [authInitialized, setAuthInitialized] = useState(false); // Nuevo estado
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authInitialized, setAuthInitialized] = useState(false);
+  const [appReady, setAppReady] = useState(false);
+  
+  // Estados para preloader y transiciones mejorados
+  const [showPreloader, setShowPreloader] = useState(true);
+  const [contentReady, setContentReady] = useState(false);
+  const [viewTransition, setViewTransition] = useState(false);
   
   const [inventory, setInventory] = useState([]);
   const [sales, setSales] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [currentView, setCurrentView] = useState('inventory');
@@ -99,94 +136,67 @@ function App() {
     { value: '11', label: 'Noviembre' },
     { value: '12', label: 'Diciembre' }
   ];
-const getUniqueLocations = () => {
-  // Verificar si está inicializado y si inventory es válido
-  if (!isInitialized || !inventory || !Array.isArray(inventory) || inventory.length === 0) {
-    return [{ value: 'all', label: 'Todas las ubicaciones' }];
-  }
-  
-  try {
-    const locations = [...new Set(
-      inventory
-        .filter(item => item && typeof item === 'object' && item.ubicacion)
-        .map(item => item.ubicacion)
-        .filter(location => typeof location === 'string' && location.trim() !== '')
-    )];
-    
-    return [
-      { value: 'all', label: 'Todas las ubicaciones' },
-      ...locations.map(location => ({ value: location, label: location }))
-    ];
-  } catch (error) {
-    console.error('Error in getUniqueLocations:', error);
-    return [{ value: 'all', label: 'Todas las ubicaciones' }];
-  }
-};
+
   const currentYear = new Date().getFullYear();
   const years = [];
   for (let i = currentYear - 5; i <= currentYear + 2; i++) {
     years.push({ value: i.toString(), label: i.toString() });
   }
 
-  // Verificar autenticación al cargar la aplicación
+  // useEffect optimizado para preloader
   useEffect(() => {
     let mounted = true;
     
-    const initializeAuth = async () => {
+    const initializeApp = async () => {
       try {
+        // Mostrar preloader mínimo 2 segundos para experiencia suave
+        const minLoadTime = new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Inicializar autenticación
         setAuthLoading(true);
-        
-        // Verificar sesión actual sin pausa innecesaria
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.error('Error getting session:', error);
-          if (mounted) {
-            setCurrentUser(null);
-            setIsAuthenticated(false);
-            setAuthLoading(false);
-            setAuthInitialized(true);
-          }
-          return;
-        }
+        const { data: { session } } = await supabase.auth.getSession();
         
         if (mounted) {
           if (session?.user) {
-            console.log('User found in session:', session.user.email);
             setCurrentUser(session.user);
             setIsAuthenticated(true);
           } else {
-            console.log('No user session found');
             setCurrentUser(null);
             setIsAuthenticated(false);
           }
           setAuthLoading(false);
           setAuthInitialized(true);
+          setAppReady(true);
         }
-      } catch (error) {
-        console.error('Error initializing auth:', error);
+        
+        // Esperar tiempo mínimo
+        await minLoadTime;
+        
+        // Preparar contenido
         if (mounted) {
-          setCurrentUser(null);
-          setIsAuthenticated(false);
-          setAuthLoading(false);
-          setAuthInitialized(true);
+          setContentReady(true);
+          
+          // Fade out del preloader con delay
+          setTimeout(() => {
+            setShowPreloader(false);
+          }, 500);
+        }
+        
+      } catch (error) {
+        console.error('Error initializing app:', error);
+        if (mounted) {
+          setShowPreloader(false);
+          setContentReady(true);
         }
       }
     };
-
-    initializeAuth();
+    
+    initializeApp();
     
     // Escuchar cambios de autenticación
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email);
-        
-        if (mounted) {
-          // Evitar cambios de estado durante INITIAL_SESSION
-          if (event === 'INITIAL_SESSION') {
-            return;
-          }
-          
+        if (mounted && event !== 'INITIAL_SESSION') {
           if (session?.user) {
             setCurrentUser(session.user);
             setIsAuthenticated(true);
@@ -198,6 +208,7 @@ const getUniqueLocations = () => {
             setIsInitialized(false);
           }
           setAuthLoading(false);
+          setAppReady(true);
         }
       }
     );
@@ -207,14 +218,27 @@ const getUniqueLocations = () => {
       subscription.unsubscribe();
     };
   }, []);
+  
+  // useEffect para transiciones de vista
+  useEffect(() => {
+    if (contentReady) {
+      setViewTransition(true);
+      const timer = setTimeout(() => setViewTransition(false), 300);
+      return () => clearTimeout(timer);
+    }
+  }, [currentView, contentReady]);
 
   useEffect(() => {
     const loadData = async () => {
-      // Solo cargar datos si está autenticado y no está cargando auth
-      if (!isAuthenticated || authLoading) return;
+      // Solo cargar datos si está autenticado, auth inicializado y no está cargando auth
+      if (!isAuthenticated || !authInitialized || authLoading || !appReady) {
+        setIsInitialized(false);
+        return;
+      }
       
       setIsLoading(true);
       setError(null);
+      setIsInitialized(false);
       
       try {
         const [inventoryData, salesData] = await Promise.all([
@@ -228,13 +252,14 @@ const getUniqueLocations = () => {
       } catch (error) {
         console.error('Error loading data:', error);
         setError('Error al cargar los datos. Por favor, recarga la página.');
+        setIsInitialized(false);
       } finally {
         setIsLoading(false);
       }
     };
 
     loadData();
-  }, [isAuthenticated, authLoading]);
+  }, [isAuthenticated, authInitialized, authLoading, appReady]);
 
   // Función para manejar login exitoso
   const handleLogin = (user) => {
@@ -256,23 +281,6 @@ const getUniqueLocations = () => {
       console.error('Error during logout:', error);
     }
   };
-
-  // Pantalla de carga inicial mientras se verifica la autenticación
-  if (!authInitialized || authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{background: 'linear-gradient(135deg, #1e40af 0%, #1e3a8a 50%, #f59e0b 100%)'}}>
-        <div className="text-center bg-white rounded-2xl shadow-2xl p-8 animate-fade-in">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-blue-600 font-medium">Cargando aplicación...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Si no está autenticado, mostrar login
-  if (!isAuthenticated) {
-    return <Login onLogin={handleLogin} />;
-  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -489,58 +497,7 @@ const filterSalesByDate = (sales) => {
     return saleYear === selectedYear && saleMonth === selectedMonth;
   });
 };
-const safeInventory = Array.isArray(inventory) ? inventory.filter(item => item && typeof item === 'object') : [];
-const safeSales = Array.isArray(sales) ? sales.filter(sale => sale && typeof sale === 'object') : [];
-const dateFilteredInventory = filterInventoryByDate(safeInventory);
-const filteredInventory = dateFilteredInventory.filter(item => {
-  if (!item || typeof item !== 'object') return false;
-  
-  try {
-    const matchesSearch = searchTerm === '' || 
-      (item.nombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.codigo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.categoria || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.color || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.proveedor || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.ubicacion || '').toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === 'all' || item.categoria === selectedCategory;
-    const matchesSize = selectedSize === 'all' || item.tamaño === selectedSize;
-    const matchesLocation = selectedLocation === 'all' || item.ubicacion === selectedLocation;
-    return matchesSearch && matchesCategory && matchesSize && matchesLocation;
-  } catch (error) {
-    console.error('Error filtering item:', item, error);
-    return false;
-  }
-});  
-  // Aplicar filtros a las ventas
-  const filteredSales = filterSalesByDate(safeSales);
 
-  const lowStockItems = dateFilteredInventory.filter(item => 
-    item && typeof item.cantidadstock === 'number' && typeof item.stockminimo === 'number' && 
-    item.cantidadstock <= item.stockminimo
-  );
-  
-  const totalValue = dateFilteredInventory.reduce((sum, item) => {
-    if (!item || typeof item.cantidadstock !== 'number' || typeof item.precioventa !== 'number') {
-      return sum;
-    }
-    return sum + (item.cantidadstock * item.precioventa);
-  }, 0);
-  
-  const totalItems = dateFilteredInventory.reduce((sum, item) => {
-    if (!item || typeof item.cantidadstock !== 'number') {
-      return sum;
-    }
-    return sum + item.cantidadstock;
-  }, 0);
-  
-  // Estadísticas de ventas
-  const totalSales = filteredSales.reduce((sum, sale) => {
-    if (!sale || typeof sale.total_venta !== 'number') {
-      return sum;
-    }
-    return sum + sale.total_venta;
-  }, 0);
 
   const exportToTXT = () => {
     const currentDate = new Date().toLocaleDateString('es-ES');
@@ -662,136 +619,239 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
     document.body.removeChild(link);
   };
 
-  const MobileInventoryCard = ({ item }) => (
-    <div className="mobile-card show-mobile">
-      <div className="mobile-card-header">
-        <div>
-          <div className="mobile-card-title">{item.nombre || 'Sin nombre'}</div>
-          {item.codigo && (
-            <div className="mobile-card-subtitle">{item.codigo}</div>
+// ===== COMPONENTES MÓVILES =====
+
+// Componente para tarjetas de inventario en móvil
+const MobileInventoryCard = ({ item, sellItem, editItem, deleteItem }) => (
+  <div className="mobile-card show-mobile">
+    <div className="mobile-card-header">
+      <div>
+        <div className="mobile-card-title">{item.nombre || 'Sin nombre'}</div>
+        {item.codigo && (
+          <div className="mobile-card-subtitle">{item.codigo}</div>
+        )}
+      </div>
+      <div className="mobile-card-actions">
+        <button
+          onClick={() => sellItem(item)}
+          disabled={(item.cantidadstock || 0) <= 0}
+          className={`p-2 rounded ${(item.cantidadstock || 0) > 0 ? 'text-green-600' : 'text-gray-400'}`}
+          title="Vender"
+        >
+          <DollarSign className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => editItem(item)}
+          className="p-2 text-blue-600 rounded"
+          title="Editar"
+        >
+          <Edit2 className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => deleteItem(item.id)}
+          className="p-2 text-red-600 rounded"
+          title="Eliminar"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+    <div className="mobile-card-content">
+      <div className="mobile-card-field">
+        <div className="mobile-card-label">Categoría</div>
+        <div className="mobile-card-value">{item.categoria?.replace('_', ' ') || 'Sin categoría'}</div>
+      </div>
+      {item.tamaño && (
+        <div className="mobile-card-field">
+          <div className="mobile-card-label">Tamaño</div>
+          <div className="mobile-card-value">{item.tamaño}</div>
+        </div>
+      )}
+      <div className="mobile-card-field">
+        <div className="mobile-card-label">Stock</div>
+        <div className="mobile-card-value flex items-center">
+          {item.cantidadstock || 0}
+          {(item.cantidadstock || 0) <= (item.stockminimo || 0) && (
+            <AlertTriangle className="w-4 h-4 text-red-500 ml-1" />
           )}
         </div>
-        <div className="mobile-card-actions">
-          <button
-            onClick={() => sellItem(item)}
-            disabled={(item.cantidadstock || 0) <= 0}
-            className={`p-2 rounded ${(item.cantidadstock || 0) > 0 ? 'text-green-600' : 'text-gray-400'}`}
-            title="Vender"
-          >
-            <DollarSign className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => editItem(item)}
-            className="p-2 text-blue-600 rounded"
-            title="Editar"
-          >
-            <Edit2 className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => deleteItem(item.id)}
-            className="p-2 text-red-600 rounded"
-            title="Eliminar"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+      </div>
+      <div className="mobile-card-field">
+        <div className="mobile-card-label">Precio</div>
+        <div className="mobile-card-value">${(item.precioventa || 0).toLocaleString()}</div>
+      </div>
+      <div className="mobile-card-field">
+        <div className="mobile-card-label">Estado</div>
+        <div className="mobile-card-value">
+          <span className={`px-2 py-1 text-xs rounded-full ${
+            item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
+            item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
+            item.estado === 'vendido' ? 'bg-gray-100 text-gray-800' :
+            'bg-red-100 text-red-800'
+          }`}>
+            {item.estado || 'Sin estado'}
+          </span>
         </div>
       </div>
-      <div className="mobile-card-content">
+      {item.color && (
         <div className="mobile-card-field">
-          <div className="mobile-card-label">Categoría</div>
-          <div className="mobile-card-value">{item.categoria?.replace('_', ' ') || 'Sin categoría'}</div>
+          <div className="mobile-card-label">Color</div>
+          <div className="mobile-card-value">{item.color}</div>
         </div>
-        {item.tamaño && (
-          <div className="mobile-card-field">
-            <div className="mobile-card-label">Tamaño</div>
-            <div className="mobile-card-value">{item.tamaño}</div>
-          </div>
-        )}
+      )}
+      {item.ubicacion && (
         <div className="mobile-card-field">
-          <div className="mobile-card-label">Stock</div>
-          <div className="mobile-card-value flex items-center">
-            {item.cantidadstock || 0}
-            {(item.cantidadstock || 0) <= (item.stockminimo || 0) && (
-              <AlertTriangle className="w-4 h-4 text-red-500 ml-1" />
-            )}
-          </div>
+          <div className="mobile-card-label">Ubicación</div>
+          <div className="mobile-card-value">{item.ubicacion}</div>
         </div>
+      )}
+      {item.proveedor && (
         <div className="mobile-card-field">
-          <div className="mobile-card-label">Precio</div>
-          <div className="mobile-card-value">${(item.precioventa || 0).toLocaleString()}</div>
+          <div className="mobile-card-label">Proveedor</div>
+          <div className="mobile-card-value">{item.proveedor}</div>
         </div>
-        <div className="mobile-card-field">
-          <div className="mobile-card-label">Estado</div>
-          <div className="mobile-card-value">
-            <span className={`px-2 py-1 text-xs rounded-full ${
-              item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
-              item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
-              item.estado === 'vendido' ? 'bg-gray-100 text-gray-800' :
-              'bg-red-100 text-red-800'
-            }`}>
-              {item.estado || 'Sin estado'}
-            </span>
-          </div>
-        </div>
-        {item.color && (
-          <div className="mobile-card-field">
-            <div className="mobile-card-label">Color</div>
-            <div className="mobile-card-value">{item.color}</div>
-          </div>
-        )}
+      )}
+    </div>
+  </div>
+);
+
+// Componente para tarjetas de ventas en móvil
+const MobileSalesCard = ({ sale, deleteSale }) => (
+  <div className="mobile-card show-mobile">
+    <div className="mobile-card-header">
+      <div>
+        <div className="mobile-card-title">{sale.nombre || 'Sin nombre'}</div>
+        <div className="mobile-card-subtitle">{new Date(sale.fecha_venta).toLocaleDateString('es-ES')}</div>
+      </div>
+      <div className="mobile-card-actions">
+        <button
+          onClick={() => deleteSale(sale.id)}
+          className="p-2 text-red-600 rounded"
+          title="Eliminar venta"
+        >
+          <Trash2 className="w-4 h-4" />
+        </button>
       </div>
     </div>
-  );
-
-  const MobileSalesCard = ({ sale }) => (
-    <div className="mobile-card show-mobile">
-      <div className="mobile-card-header">
-        <div>
-          <div className="mobile-card-title">{sale.nombre || 'Sin nombre'}</div>
-          <div className="mobile-card-subtitle">{new Date(sale.fecha_venta).toLocaleDateString('es-ES')}</div>
-        </div>
-        <div className="mobile-card-actions">
-          <button
-            onClick={() => deleteSale(sale.id)}
-            className="p-2 text-red-600 rounded"
-            title="Eliminar venta"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
+    <div className="mobile-card-content">
+      <div className="mobile-card-field">
+        <div className="mobile-card-label">Categoría</div>
+        <div className="mobile-card-value">{sale.categoria?.replace('_', ' ') || 'Sin categoría'}</div>
       </div>
-      <div className="mobile-card-content">
+      {sale.tamaño && (
         <div className="mobile-card-field">
-          <div className="mobile-card-label">Cantidad</div>
-          <div className="mobile-card-value">{sale.cantidad_vendida}</div>
+          <div className="mobile-card-label">Tamaño</div>
+          <div className="mobile-card-value">{sale.tamaño}</div>
         </div>
-        <div className="mobile-card-field">
-          <div className="mobile-card-label">Precio Unit.</div>
-          <div className="mobile-card-value">${sale.precio_venta}</div>
-        </div>
-        <div className="mobile-card-field">
-          <div className="mobile-card-label">Total</div>
-          <div className="mobile-card-value font-bold">${sale.total_venta}</div>
-        </div>
-        <div className="mobile-card-field">
-          <div className="mobile-card-label">Método Pago</div>
-          <div className="mobile-card-value capitalize">{sale.metodo_pago}</div>
-        </div>
+      )}
+      <div className="mobile-card-field">
+        <div className="mobile-card-label">Cantidad</div>
+        <div className="mobile-card-value">{sale.cantidad_vendida}</div>
       </div>
+      <div className="mobile-card-field">
+        <div className="mobile-card-label">Precio Unit.</div>
+        <div className="mobile-card-value">${sale.precio_venta}</div>
+      </div>
+      <div className="mobile-card-field">
+        <div className="mobile-card-label">Total</div>
+        <div className="mobile-card-value font-bold">${sale.total_venta}</div>
+      </div>
+      <div className="mobile-card-field">
+        <div className="mobile-card-label">Método Pago</div>
+        <div className="mobile-card-value capitalize">{sale.metodo_pago}</div>
+      </div>
+      {sale.notas && (
+        <div className="mobile-card-field">
+          <div className="mobile-card-label">Notas</div>
+          <div className="mobile-card-value">{sale.notas}</div>
+        </div>
+      )}
     </div>
+  </div>
+);
+
+
+
+  // ✅ Solo después de todas las verificaciones de estado
+  const safeInventory = Array.isArray(inventory) ? inventory.filter(item => item && typeof item === 'object') : [];
+  const safeSales = Array.isArray(sales) ? sales.filter(sale => sale && typeof sale === 'object') : [];
+  const dateFilteredInventory = filterInventoryByDate(safeInventory);
+  
+  const getUniqueLocations = () => {
+    if (!safeInventory || safeInventory.length === 0) {
+      return [{ value: 'all', label: 'Todas las ubicaciones' }];
+    }
+    
+    try {
+      const locations = [...new Set(
+        safeInventory
+          .filter(item => item && typeof item === 'object' && item.ubicacion)
+          .map(item => item.ubicacion)
+          .filter(location => typeof location === 'string' && location.trim() !== '')
+      )];
+      
+      return [
+        { value: 'all', label: 'Todas las ubicaciones' },
+        ...locations.map(location => ({ value: location, label: location }))
+      ];
+    } catch (error) {
+      console.error('Error in getUniqueLocations:', error);
+      return [{ value: 'all', label: 'Todas las ubicaciones' }];
+    }
+  };
+  
+  const filteredInventory = dateFilteredInventory.filter(item => {
+    if (!item || typeof item !== 'object') return false;
+    
+    try {
+      const matchesSearch = searchTerm === '' || 
+        (item.nombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.codigo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.categoria || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.color || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.proveedor || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.ubicacion || '').toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = selectedCategory === 'all' || item.categoria === selectedCategory;
+      const matchesSize = selectedSize === 'all' || item.tamaño === selectedSize;
+      const matchesLocation = selectedLocation === 'all' || item.ubicacion === selectedLocation;
+      return matchesSearch && matchesCategory && matchesSize && matchesLocation;
+    } catch (error) {
+      console.error('Error filtering item:', item, error);
+      return false;
+    }
+  });
+  
+  // Aplicar filtros a las ventas
+  const filteredSales = filterSalesByDate(safeSales);
+
+  const lowStockItems = dateFilteredInventory.filter(item => 
+    item && typeof item.cantidadstock === 'number' && typeof item.stockminimo === 'number' && 
+    item.cantidadstock <= item.stockminimo
   );
+  
+  const totalValue = dateFilteredInventory.reduce((sum, item) => {
+    if (!item || typeof item.cantidadstock !== 'number' || typeof item.precioventa !== 'number') {
+      return sum;
+    }
+    return sum + (item.cantidadstock * item.precioventa);
+  }, 0);
+  
+  const totalItems = dateFilteredInventory.reduce((sum, item) => {
+    if (!item || typeof item.cantidadstock !== 'number') {
+      return sum;
+    }
+    return sum + item.cantidadstock;
+  }, 0);
+  
+  // Estadísticas de ventas
+  const totalSales = filteredSales.reduce((sum, sale) => {
+    if (!sale || typeof sale.total_venta !== 'number') {
+      return sum;
+    }
+    return sum + sale.total_venta;
+  }, 0);
 
-  if (!isInitialized || isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Cargando inventario...</p>
-        </div>
-      </div>
-    );
-  }
-
+  // Pantalla de error (solo si hay error y todo está listo)
   if (error) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -802,7 +862,12 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
           </div>
           <p className="text-gray-600 mb-4">{error}</p>
           <button 
-            onClick={() => window.location.reload()} 
+            onClick={() => {
+              setError(null);
+              setIsInitialized(false);
+              setAppReady(false);
+              window.location.reload();
+            }} 
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
             Recargar página
@@ -813,80 +878,104 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
   }
 
   return (
-    <div className="min-h-screen" style={{background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)'}}>
-      <div className="gradient-bg shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="bg-white p-2 rounded-lg shadow-md">
-                <img 
-                  src="/img/micama.jpg" 
-                  alt="MiCama Logo" 
-                  className="h-12 w-12 object-contain"
-                />
-              </div>
-              <div className="hidden-mobile">
-                <h1 className="text-3xl font-bold text-white flex items-center gap-2">
-                  Sistema de Inventario
-                  <span className="text-yellow-300">✨</span>
-                </h1>
-                <p className="text-blue-100">Bienvenido, <span className="text-yellow-300 font-semibold">{currentUser?.email}</span></p>
-              </div>
-              <div className="show-mobile">
-                <h1 className="text-xl font-bold text-white">
-                  MiCama ✨
-                </h1>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3">
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setCurrentView('inventory')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
-                    currentView === 'inventory' 
-                      ? 'gold-gradient text-white shadow-lg transform scale-105' 
-                      : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
-                >
-                  <Package className="w-4 h-4" />
-                  <span className="hidden-mobile">Inventario</span>
-                </button>
-                <button
-                  onClick={() => setCurrentView('sales')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
-                    currentView === 'sales' 
-                      ? 'gold-gradient text-white shadow-lg transform scale-105' 
-                      : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
-                >
-                  <ShoppingCart className="w-4 h-4" />
-                  <span className="hidden-mobile">Ventas</span>
-                </button>
-                <button
-                  onClick={() => setCurrentView('dashboard')}
-                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
-                    currentView === 'dashboard' 
-                      ? 'gold-gradient text-white shadow-lg transform scale-105' 
-                      : 'bg-white/20 text-white hover:bg-white/30'
-                  }`}
-                >
-                  <TrendingUp className="w-4 h-4" />
-                  <span className="hidden-mobile">Dashboard</span>
-                </button>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="flex items-center gap-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-300 shadow-lg hover:shadow-xl"
-              >
-                <LogOut className="w-4 h-4" />
-                <span className="hidden-mobile">Cerrar Sesión</span>
-              </button>
-            </div>
-          </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Preloader */}
+      {showPreloader && <PreloaderComponent showPreloader={showPreloader} />}
+      
+      {/* Skeleton loader durante la transición */}
+      {!showPreloader && !contentReady && (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <SkeletonLoader />
         </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      )}
+      
+      {/* Contenido principal - Solo mostrar cuando preloader termine Y contenido esté listo */}
+      {!showPreloader && contentReady && (
+        <div className={`content-fade-in ${viewTransition ? 'view-transition entering' : 'view-transition entered'} gpu-accelerated`}>
+          {/* Pantalla de login */}
+          {!isAuthenticated ? (
+            <Login onLogin={handleLogin} />
+          ) : (
+            <>
+              {/* Header */}
+              <header className="bg-blue-600 shadow-sm border-b">
+                <div className="max-w-7xl mx-auto px-4 py-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="bg-white p-2 rounded-lg shadow-md">
+                        <img 
+                          src="/img/micama.jpg" 
+                          alt="MiCama Logo" 
+                          className="h-12 w-12 object-contain"
+                        />
+                      </div>
+                      <div className="hidden-mobile">
+                        <h1 className="text-3xl font-bold text-white flex items-center gap-2">
+                          Sistema de Inventario
+                          <span className="text-yellow-300">✨</span>
+                        </h1>
+                        <p className="text-blue-100">Bienvenido, <span className="text-yellow-300 font-semibold">{currentUser?.email}</span></p>
+                      </div>
+                      <div className="show-mobile">
+                        <h1 className="text-xl font-bold text-white">
+                          MiCama ✨
+                        </h1>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => setCurrentView('inventory')}
+                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
+                            currentView === 'inventory' 
+                              ? 'gold-gradient text-white shadow-lg transform scale-105' 
+                              : 'bg-white/20 text-white hover:bg-white/30'
+                          }`}
+                        >
+                          <Package className="w-4 h-4" />
+                          <span className="hidden-mobile">Inventario</span>
+                        </button>
+                        <button
+                          onClick={() => setCurrentView('sales')}
+                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
+                            currentView === 'sales' 
+                              ? 'gold-gradient text-white shadow-lg transform scale-105' 
+                              : 'bg-white/20 text-white hover:bg-white/30'
+                          }`}
+                        >
+                          <ShoppingCart className="w-4 h-4" />
+                          <span className="hidden-mobile">Ventas</span>
+                        </button>
+                        <button
+                          onClick={() => setCurrentView('dashboard')}
+                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
+                            currentView === 'dashboard' 
+                              ? 'gold-gradient text-white shadow-lg transform scale-105' 
+                              : 'bg-white/20 text-white hover:bg-white/30'
+                          }`}
+                        >
+                          <TrendingUp className="w-4 h-4" />
+                          <span className="hidden-mobile">Dashboard</span>
+                        </button>
+                      </div>
+                      <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-300 shadow-lg hover:shadow-xl"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span className="hidden-mobile">Cerrar Sesión</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </header>
+              
+              {/* Main content con skeleton loading */}
+              <main className="max-w-7xl mx-auto px-4 py-6">
+                {!isInitialized || isLoading ? (
+                  <SkeletonLoader />
+                ) : (
+                  <div className="gpu-accelerated">
         {/* Filtros de fecha para todas las vistas */}
         <div className="mb-6 bg-white rounded-xl shadow-lg card-shadow p-6 gold-accent animate-fade-in">
           <div className="flex flex-wrap gap-4 items-center">
@@ -1093,7 +1182,13 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
                 <div>
                   {filteredInventory.map((item) => {
                     if (!item || !item.id) return null;
-                    return <MobileInventoryCard key={item.id} item={item} />;
+                    return <MobileInventoryCard 
+                      key={item.id} 
+                      item={item} 
+                      sellItem={sellItem}
+                      editItem={editItem}
+                      deleteItem={deleteItem}
+                    />;
                   })}
                 </div>
               )}
@@ -1188,7 +1283,11 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
               ) : (
                 <div>
                   {filteredSales.map((sale) => (
-                    <MobileSalesCard key={sale.id} sale={sale} />
+                    <MobileSalesCard 
+                      key={sale.id} 
+                      sale={sale} 
+                      deleteSale={deleteSale}
+                    />
                   ))}
                 </div>
               )}
@@ -1250,8 +1349,15 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
             </div>
           </>
         )}
-      </div>
+                  </div>
+                )}
+              </main>
+            </>
+          )}
+        </div>
+      )}
       
+
 
       {/* Modal para agregar/editar */}
       {isModalOpen && (
@@ -1510,6 +1616,7 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
           </div>
         </div>
       )}
+      
     </div>
   );
 }

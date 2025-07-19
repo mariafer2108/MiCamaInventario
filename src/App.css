@@ -1524,3 +1524,196 @@ input[type=number] {
     visibility: hidden;
   }
 }
+
+/* ===== PRELOADER Y TRANSICIONES AVANZADAS ===== */
+
+/* Preloader principal */
+.app-preloader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, var(--primary-blue) 0%, var(--dark-blue) 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  opacity: 1;
+  transition: opacity 0.5s ease-out;
+}
+
+.app-preloader.fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Logo animado del preloader */
+.preloader-logo {
+  width: 80px;
+  height: 80px;
+  background: white;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  animation: logoFloat 2s ease-in-out infinite;
+}
+
+@keyframes logoFloat {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+/* Spinner de carga */
+.preloader-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top: 3px solid var(--gold);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Texto del preloader */
+.preloader-text {
+  color: white;
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  animation: textPulse 2s ease-in-out infinite;
+}
+
+.preloader-subtext {
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 0.875rem;
+}
+
+@keyframes textPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Skeleton screens para contenido */
+.skeleton-container {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.skeleton-header {
+  height: 60px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+}
+
+.skeleton-card {
+  height: 120px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.skeleton-table {
+  height: 400px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Transiciones de contenido */
+.content-fade-in {
+  animation: contentFadeIn 0.6s ease-out;
+}
+
+@keyframes contentFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Transiciones suaves para cambios de vista */
+.view-transition {
+  transition: all 0.3s ease-in-out;
+}
+
+.view-transition.entering {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
+.view-transition.entered {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Mejoras para estados de carga */
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  transition: opacity 0.3s ease;
+}
+
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e5e7eb;
+  border-top: 3px solid var(--primary-blue);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* Optimizaciones de rendimiento */
+.gpu-accelerated {
+  transform: translateZ(0);
+  will-change: transform, opacity;
+}
+
+/* Responsive para preloader */
+@media (max-width: 768px) {
+  .preloader-logo {
+    width: 60px;
+    height: 60px;
+  }
+  
+  .preloader-text {
+    font-size: 1rem;
+  }
+  
+  .skeleton-container {
+    padding: 1rem;
+  }
+}
