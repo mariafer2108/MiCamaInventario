@@ -1,7 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Download, Search, Package, TrendingUp, AlertTriangle, ShoppingCart, DollarSign, Calendar, LogOut } from 'lucide-react';
 import './App.css';
-import { fetchInventory, addItem, updateItem, deleteItemFromDB, sellProductWithTransfer, fetchSales, deleteSaleFromDB } from './supabaseService';
+import {
+  fetchInventory,
+  fetchSales,
+  fetchReservations,
+  createReservation,
+  confirmReservation,
+  cancelReservation,
+  deleteReservation,
+  updateItem,
+  addItem,
+  sellProductWithTransfer,
+  deleteItemFromDB,
+  deleteSaleFromDB
+} from './supabaseService';
 import { supabase } from './supabaseClient';
 import Login from './Login';
 
@@ -52,6 +65,18 @@ function App() {
   
   const [inventory, setInventory] = useState([]);
   const [sales, setSales] = useState([]);
+  // Estados para reservas
+  const [reservations, setReservations] = useState([]);
+  const [isReservationModalOpen, setIsReservationModalOpen] = useState(false);
+  const [reservingItem, setReservingItem] = useState(null);
+  const [reservationFilter, setReservationFilter] = useState('all');
+  const [reservationData, setReservationData] = useState({
+    cantidadReservada: '',
+    valorReserva: 0,
+    cliente: '',
+    telefono: '',
+    notas: ''
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -241,13 +266,15 @@ function App() {
       setIsInitialized(false);
       
       try {
-        const [inventoryData, salesData] = await Promise.all([
+        const [inventoryData, salesData, reservationsData] = await Promise.all([
           fetchInventory(),
-          fetchSales()
+          fetchSales(),
+          fetchReservations()
         ]);
         
         setInventory(inventoryData || []);
         setSales(salesData || []);
+        setReservations(reservationsData || []);
         setIsInitialized(true);
       } catch (error) {
         console.error('Error loading data:', error);
@@ -447,6 +474,260 @@ function App() {
         alert('Hubo un error al eliminar la venta. Por favor, inténtalo de nuevo.');
       }
     }
+  };
+
+  const handleReservation = async (e) => {
+    e.preventDefault();
+    
+    if (!reservingItem || reservationData.cantidadReservada <= 0) {
+      alert('Por favor, verifica los datos de la reserva.');
+      return;
+    }
+
+    try {
+      const reservationInfo = {
+        cantidadReservada: parseInt(reservationData.cantidadReservada),
+        valorReserva: reservationData.valorReserva ? parseFloat(reservationData.valorReserva) : 0,
+        cliente: reservationData.cliente,
+        telefono: reservationData.telefono,
+        notas: reservationData.notas
+      };
+
+      // Verificar si hay suficiente stock local
+      if (reservingItem.cantidadstock < reservationInfo.cantidadReservada) {
+        // Si es un producto local, intentar transferir desde bodega
+        if (reservingItem.ubicacion && reservingItem.ubicacion.toLowerCase().includes('local')) {
+          const cantidadNecesaria = reservationInfo.cantidadReservada - reservingItem.cantidadstock;
+          
+          try {
+            // Importar la función de transferencia
+            const { transferFromWarehouse } = await import('./supabaseService');
+            
+            const transferResult = await transferFromWarehouse(
+              reservingItem.nombre,
+              reservingItem.categoria,
+              reservingItem.tamaño,
+              reservingItem.color,
+              cantidadNecesaria
+            );
+            
+            if (transferResult.success) {
+              alert(`✅ Transferencia completada: ${transferResult.message}`);
+              // Actualizar el stock del item en memoria
+              reservingItem.cantidadstock = transferResult.newLocalStock;
+            } else {
+              alert(`⚠️ ${transferResult.message}`);
+              if (reservingItem.cantidadstock < reservationInfo.cantidadReservada) {
+                alert(`❌ No se puede completar la reserva. Stock insuficiente incluso después de intentar transferir desde bodega.`);
+                return;
+              }
+            }
+          } catch (transferError) {
+            console.error('Error en transferencia:', transferError);
+            alert(`❌ Error al transferir desde bodega: ${transferError.message}`);
+            return;
+          }
+        } else {
+          alert(`❌ Stock insuficiente. Disponible: ${reservingItem.cantidadstock}, Solicitado: ${reservationInfo.cantidadReservada}`);
+          return;
+        }
+      }
+
+      // Crear la reserva
+      await createReservation({
+        inventoryId: reservingItem.id,
+        cantidadReservada: reservationInfo.cantidadReservada,
+        valorReserva: reservationInfo.valorReserva,
+        cliente: reservationInfo.cliente,
+        telefono: reservationInfo.telefono,
+        notas: reservationInfo.notas
+      });
+      
+      // Descontar del stock local
+      const newStock = reservingItem.cantidadstock - reservationInfo.cantidadReservada;
+      
+      await updateItem(reservingItem.id, {
+        ...reservingItem,
+        cantidadstock: newStock,
+        estado: newStock === 0 ? 'reservado' : reservingItem.estado
+      });
+      
+      // **NUEVA FUNCIONALIDAD: Transferencia automática de reposición (igual que en ventas)**
+      let transferResult = null;
+      let alertaStock = '';
+      
+      if (reservingItem.ubicacion && reservingItem.ubicacion.toLowerCase().includes('local')) {
+        console.log('🚚 Iniciando transferencia de reposición desde bodega...');
+        
+        try {
+          const { transferFromWarehouse } = await import('./supabaseService');
+          
+          transferResult = await transferFromWarehouse(
+            reservingItem.nombre,
+            reservingItem.categoria,
+            reservingItem.tamaño,
+            reservingItem.color,
+            reservationInfo.cantidadReservada
+          );
+          
+          console.log('🚚 Resultado de transferencia de reposición:', transferResult);
+          
+          if (transferResult.success) {
+            alertaStock += `✅ Stock repuesto automáticamente desde bodega: ${transferResult.message}`;
+          } else {
+            alertaStock += `⚠️ No se pudo reponer stock desde bodega: ${transferResult.message}`;
+          }
+          
+          // Si hay transferencia con bodega agotada
+          if (transferResult.bodegaAgotada) {
+            alertaStock += alertaStock ? '\n' : '';
+            alertaStock += `🚨 ALERTA: SE AGOTÓ LA BODEGA para "${reservingItem.nombre}".`;
+          }
+          
+        } catch (transferError) {
+          console.error('Error en transferencia de reposición:', transferError);
+          alertaStock += `⚠️ Error al intentar reponer stock: ${transferError.message}`;
+        }
+      }
+      
+      // Generar alertas de stock
+      if (newStock === 0) {
+        alertaStock += alertaStock ? '\n' : '';
+        alertaStock += `⚠️ ALERTA: El producto "${reservingItem.nombre}" en ${reservingItem.ubicacion} se ha quedado SIN STOCK.`;
+      }
+      
+      // Recargar datos
+      const [inventoryData, reservationsData] = await Promise.all([
+        fetchInventory(),
+        fetchReservations()
+      ]);
+      setInventory(inventoryData || []);
+      setReservations(reservationsData || []);
+      
+      // Mostrar mensaje de éxito con información de reposición
+      let successMessage = `✅ Reserva creada exitosamente. Stock actualizado: ${newStock} unidades restantes.`;
+      if (alertaStock) {
+        successMessage += `\n\n${alertaStock}`;
+      }
+      
+      alert(successMessage);
+      resetReservationForm();
+      setIsReservationModalOpen(false);
+    } catch (error) {
+      console.error('Error creating reservation:', error);
+      alert(`Error al crear la reserva: ${error.message || 'Error desconocido'}`);
+    }
+  };
+
+  const handleConfirmReservation = async (reservationId) => {
+    if (!window.confirm('¿Estás seguro de que quieres confirmar esta reserva y convertirla en venta?')) {
+      return;
+    }
+
+    try {
+      await confirmReservation(reservationId);
+      
+      // Recargar datos
+      const [inventoryData, reservationsData, salesData] = await Promise.all([
+        fetchInventory(),
+        fetchReservations(),
+        fetchSales()
+      ]);
+      setInventory(inventoryData || []);
+      setReservations(reservationsData || []);
+      setSales(salesData || []);
+      
+      alert('Reserva confirmada y convertida en venta exitosamente.');
+    } catch (error) {
+      console.error('Error confirming reservation:', error);
+      alert(`Error al confirmar la reserva: ${error.message || 'Error desconocido'}`);
+    }
+  };
+
+  const handleCancelReservation = async (reservationId) => {
+    const reason = prompt('¿Por qué motivo cancelas esta reserva?');
+    if (!reason) return;
+
+    try {
+      await cancelReservation(reservationId, reason);
+      
+      // Recargar datos
+      const [inventoryData, reservationsData] = await Promise.all([
+        fetchInventory(),
+        fetchReservations()
+      ]);
+      setInventory(inventoryData || []);
+      setReservations(reservationsData || []);
+      
+      alert('Reserva cancelada exitosamente.');
+    } catch (error) {
+      console.error('Error canceling reservation:', error);
+      alert(`Error al cancelar la reserva: ${error.message || 'Error desconocido'}`);
+    }
+  };
+
+  const handleDeleteReservation = async (reservationId) => {
+    if (!window.confirm('¿Estás seguro de que quieres eliminar esta reserva permanentemente? Esta acción no se puede deshacer.')) {
+      return;
+    }
+
+    try {
+      await deleteReservation(reservationId);
+      alert('Reserva eliminada exitosamente');
+      
+      // Recargar datos
+      const [inventoryData, reservationsData] = await Promise.all([
+        fetchInventory(),
+        fetchReservations()
+      ]);
+      setInventory(inventoryData || []);
+      setReservations(reservationsData || []);
+    } catch (error) {
+      console.error('Error al eliminar la reserva:', error);
+      alert('Error al eliminar la reserva: ' + error.message);
+    }
+  };
+
+  const resetReservationForm = () => {
+    setReservationData({
+      cantidadReservada: '',
+      valorReserva: 0,
+      cliente: '',
+      telefono: '',
+      notas: ''
+    });
+    setReservingItem(null);
+  };
+
+  // Función para calcular valor de reserva automáticamente
+  const calculateReservationValue = (cantidad, precioProducto) => {
+    // Convertir a números para asegurar cálculo correcto
+    const cantidadNum = parseInt(cantidad) || 0;
+    const precioNum = parseFloat(precioProducto) || 0;
+    
+    // Valor líquido completo (100% del valor total)
+    const valorTotal = cantidadNum * precioNum;
+    return valorTotal.toFixed(2);
+  };
+
+  // Función para manejar cambio en cantidad reservada
+  const handleCantidadReservadaChange = (cantidad) => {
+    // Si la cantidad está vacía, mantener el campo vacío
+    if (cantidad === '' || cantidad === null || cantidad === undefined) {
+      setReservationData({
+        ...reservationData,
+        cantidadReservada: '',
+        valorReserva: 0
+      });
+      return;
+    }
+    
+    const valorCalculado = calculateReservationValue(cantidad, parseFloat(reservingItem.precioventa || 0));
+    setReservationData({
+      ...reservationData,
+      cantidadReservada: cantidad,
+      valorReserva: valorCalculado
+    });
   };
   const editItem = (item) => {
     setFormData({
@@ -650,6 +931,16 @@ const MobileInventoryCard = ({ item, sellItem, editItem, deleteItem }) => (
           title="Vender"
         >
           <DollarSign className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => {
+            setReservingItem(item);
+            setIsReservationModalOpen(true);
+          }}
+          className="p-2 text-purple-600 rounded"
+          title="Reservar"
+        >
+          <Calendar className="w-4 h-4" />
         </button>
         <button
           onClick={() => editItem(item)}
@@ -968,6 +1259,17 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                           <TrendingUp className="w-4 h-4" />
                           <span className="hidden-mobile">Dashboard</span>
                         </button>
+                        <button
+                          onClick={() => setCurrentView('reservations')}
+                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
+                            currentView === 'reservations' 
+                              ? 'gold-gradient text-white shadow-lg transform scale-105' 
+                              : 'bg-white/20 text-white hover:bg-white/30'
+                          }`}
+                        >
+                          <Calendar className="w-4 h-4" />
+                          <span className="hidden-mobile">Reservas</span>
+                        </button>
                       </div>
                       <button
                         onClick={handleLogout}
@@ -1157,6 +1459,23 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                                   title="Vender"
                                 >
                                   <DollarSign className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    setReservingItem(item);
+                                    setReservationData({
+                                      cantidadReservada: '',
+                                      valorReserva: 0,
+                                      cliente: '',
+                                      telefono: '',
+                                      notas: ''
+                                    });
+                                    setIsReservationModalOpen(true);
+                                  }}
+                                  className="text-purple-600 hover:text-purple-900"
+                                  title="Reservar"
+                                >
+                                  <Calendar className="w-4 h-4" />
                                 </button>
                                 <button
                                   onClick={() => editItem(item)}
@@ -1360,6 +1679,151 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
             </div>
           </>
         )}
+
+        {currentView === 'reservations' && (
+          <div className="space-y-6">
+            {/* Estadísticas de reservas */}
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">Total Reservas</h3>
+                <p className="text-3xl font-bold text-blue-600">{reservations.length}</p>
+              </div>
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">Valor Total</h3>
+                <p className="text-2xl font-bold text-orange-600">
+                  CLP {reservations.reduce((sum, r) => sum + (parseFloat(r.valor_reserva) || 0), 0).toLocaleString()}
+                </p>
+              </div>
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">Activas</h3>
+                <p className="text-3xl font-bold text-green-600">
+                  {reservations.filter(r => r.estado === 'activa').length}
+                </p>
+              </div>
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">Confirmadas</h3>
+                <p className="text-3xl font-bold text-purple-600">
+                  {reservations.filter(r => r.estado === 'confirmada').length}
+                </p>
+              </div>
+              <div className="bg-white p-6 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">Canceladas</h3>
+                <p className="text-3xl font-bold text-red-600">
+                  {reservations.filter(r => r.estado === 'cancelada').length}
+                </p>
+              </div>
+            </div>
+
+            {/* Filtros y lista de reservas */}
+            <div className="bg-white rounded-lg shadow p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold">Gestión de Reservas</h2>
+                <select
+                  value={reservationFilter}
+                  onChange={(e) => setReservationFilter(e.target.value)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg"
+                >
+                  <option value="all">Todas las reservas</option>
+                  <option value="activa">Activas</option>
+                  <option value="confirmada">Confirmadas</option>
+                  <option value="cancelada">Canceladas</option>
+                </select>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cliente</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cantidad</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {reservations
+                      .filter(reservation => reservationFilter === 'all' || reservation.estado === reservationFilter)
+                      .map((reservation) => {
+                        const product = inventory.find(item => item.id === reservation.inventory_id);
+                        return (
+                          <tr key={reservation.id}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {product?.nombre || 'Producto no encontrado'}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {product?.codigo}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">{reservation.cliente}</div>
+                                <div className="text-sm text-gray-500">{reservation.telefono}</div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              {reservation.cantidad_reservada}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                              CLP {reservation.valor_reserva?.toLocaleString()}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                reservation.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                                reservation.estado === 'confirmada' ? 'bg-purple-100 text-purple-800' :
+                                'bg-red-100 text-red-800'
+                              }`}>
+                                {reservation.estado}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                              {reservation.estado === 'activa' && (
+                                <>
+                                  <button
+                                    onClick={() => handleConfirmReservation(reservation.id)}
+                                    className="text-green-600 hover:text-green-900"
+                                  >
+                                    Confirmar
+                                  </button>
+                                  <button
+                                    onClick={() => handleCancelReservation(reservation.id)}
+                                    className="text-red-600 hover:text-red-900"
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteReservation(reservation.id)}
+                                    className="text-red-800 hover:text-red-900 font-semibold"
+                                    title="Eliminar reserva permanentemente"
+                                  >
+                                    Eliminar
+                                  </button>
+                                </>
+                              )}
+                              {reservation.estado !== 'activa' && (
+                                <button
+                                  onClick={() => handleDeleteReservation(reservation.id)}
+                                  className="text-red-800 hover:text-red-900 font-semibold"
+                                  title="Eliminar reserva permanentemente"
+                                >
+                                  Eliminar
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    }
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
                   </div>
                 )}
               </main>
@@ -1531,6 +1995,111 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para reserva */}
+      {isReservationModalOpen && reservingItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-xl font-bold mb-4">Reservar Producto</h2>
+              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                <h3 className="font-medium text-gray-900">{reservingItem.nombre}</h3>
+                <p className="text-sm text-gray-600">{reservingItem.codigo} - {reservingItem.categoria}</p>
+                <p className="text-sm text-gray-600">Stock disponible: {reservingItem.cantidadstock}</p>
+                <p className="text-sm text-gray-600">Precio: CLP {reservingItem.precioventa}</p>
+              </div>
+              <form onSubmit={handleReservation} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Cantidad a reservar</label>
+                  <input
+                    type="number"
+                    value={reservationData.cantidadReservada}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === '') {
+                        handleCantidadReservadaChange('');
+                      } else {
+                        handleCantidadReservadaChange(parseInt(value) || '');
+                      }
+                    }}
+                    min="1"
+                    max={reservingItem.cantidadstock}
+                    placeholder="Ingrese cantidad"
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Valor de reserva (valor líquido)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-2 text-gray-500 text-sm">CLP</span>
+                    <input
+                      type="text"
+                      value={`CLP ${parseFloat(reservationData.valorReserva || 0).toLocaleString()}`}
+                      readOnly
+                      className="w-full pl-12 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+                      placeholder="Se calcula automáticamente"
+                    />
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                      <span className="text-gray-500 text-sm">💰</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Valor líquido total: CLP {(reservationData.cantidadReservada * parseFloat(reservingItem.precioventa || 0)).toLocaleString()}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Cliente</label>
+                  <input
+                    type="text"
+                    value={reservationData.cliente}
+                    onChange={(e) => setReservationData({ ...reservationData, cliente: e.target.value })}
+                    required
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Teléfono</label>
+                  <input
+                    type="tel"
+                    value={reservationData.telefono}
+                    onChange={(e) => setReservationData({ ...reservationData, telefono: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Notas</label>
+                  <textarea
+                    value={reservationData.notas}
+                    onChange={(e) => setReservationData({ ...reservationData, notas: e.target.value })}
+                    rows="2"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  ></textarea>
+                </div>
+              </form>
+            </div>
+            <div className="border-t bg-gray-50 px-6 py-4 flex justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsReservationModalOpen(false);
+                  resetReservationForm();
+                }}
+                className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                onClick={handleReservation}
+                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+              >
+                Crear Reserva
+              </button>
+            </div>
           </div>
         </div>
       )}

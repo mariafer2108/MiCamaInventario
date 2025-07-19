@@ -554,3 +554,361 @@ export const deleteSaleFromDB = async (saleId) => {
     throw error;
   }
 };
+
+// ==================== SISTEMA DE RESERVAS ====================
+
+// Crear una nueva reserva
+export const createReservation = async (reservationData) => {
+  try {
+    console.log('📝 Creando nueva reserva:', reservationData);
+    
+    const {
+      inventoryId,
+      cantidadReservada,
+      valorReserva,
+      cliente,
+      telefono,
+      notas,
+    } = reservationData;
+
+    // Verificar que el producto existe y tiene suficiente stock
+    const { data: product, error: fetchError } = await supabase
+      .from('inventory')
+      .select('*')
+      .eq('id', inventoryId)
+      .single();
+
+    if (fetchError) throw fetchError;
+    
+    if (!product) {
+      throw new Error('Producto no encontrado');
+    }
+
+    // Verificar stock disponible (considerando reservas activas)
+    const stockDisponible = await getAvailableStock(inventoryId);
+    
+    if (stockDisponible < cantidadReservada) {
+      throw new Error(
+        `Stock insuficiente. Disponible: ${stockDisponible}, Solicitado: ${cantidadReservada}`
+      );
+    }
+
+    // Crear la reserva
+    const { data: reservation, error: reservationError } = await supabase
+      .from('reservations')
+      .insert([{
+        inventory_id: inventoryId,
+        nombre_producto: product.nombre,
+        categoria: product.categoria,
+        tamaño: product.tamaño,
+        color: product.color,
+        cantidad_reservada: cantidadReservada,
+        valor_reserva: valorReserva,
+        cliente: cliente,
+        telefono: telefono || '',
+        notas: notas || '',
+        fecha_reserva: new Date().toISOString(),
+        estado: 'activa',
+        precio_unitario: product.precioventa,
+        total_producto: product.precioventa * cantidadReservada
+      }])
+      .select();
+
+    if (reservationError) throw reservationError;
+
+    console.log('✅ Reserva creada exitosamente:', reservation[0]);
+
+    return {
+      success: true,
+      reservation: reservation[0],
+      message: `✅ Reserva creada para ${cliente}. Producto: "${product.nombre}", Cantidad: ${cantidadReservada}, Valor reserva: CLP ${valorReserva}`
+    };
+
+  } catch (error) {
+    console.error('❌ Error creating reservation:', error);
+    throw error;
+  }
+};
+
+// Obtener stock disponible (descontando reservas activas)
+export const getAvailableStock = async (inventoryId) => {
+  try {
+    // Obtener stock total del producto
+    const { data: product, error: productError } = await supabase
+      .from('inventory')
+      .select('cantidadstock')
+      .eq('id', inventoryId)
+      .single();
+
+    if (productError) throw productError;
+
+    // Obtener total de reservas activas
+    const { data: reservations, error: reservationsError } = await supabase
+      .from('reservations')
+      .select('cantidad_reservada')
+      .eq('inventory_id', inventoryId)
+      .eq('estado', 'activa');
+
+    if (reservationsError) throw reservationsError;
+
+    const totalReservado = reservations.reduce((sum, res) => sum + res.cantidad_reservada, 0);
+    const stockDisponible = product.cantidadstock - totalReservado;
+
+    return Math.max(0, stockDisponible);
+  } catch (error) {
+    console.error('❌ Error getting available stock:', error);
+    return 0;
+  }
+};
+
+// Obtener todas las reservas
+export const fetchReservations = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('*')
+      .order('fecha_reserva', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('❌ Error fetching reservations:', error);
+    throw error;
+  }
+};
+
+// Obtener reservas por estado
+export const fetchReservationsByStatus = async (estado = 'activa') => {
+  try {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('*')
+      .eq('estado', estado)
+      .order('fecha_reserva', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('❌ Error fetching reservations by status:', error);
+    throw error;
+  }
+};
+
+// Confirmar reserva (convertir a venta)
+export const confirmReservation = async (reservationId, metodoPago = 'efectivo') => {
+  try {
+    console.log('✅ Confirmando reserva:', reservationId);
+
+    // Obtener datos de la reserva
+    const { data: reservation, error: fetchError } = await supabase
+      .from('reservations')
+      .select('*')
+      .eq('id', reservationId)
+      .single();
+
+    if (fetchError) throw fetchError;
+    
+    if (!reservation) {
+      throw new Error('Reserva no encontrada');
+    }
+
+    if (reservation.estado !== 'activa') {
+      throw new Error('La reserva no está activa');
+    }
+
+    // Verificar que aún hay stock suficiente
+    const { data: product, error: productError } = await supabase
+      .from('inventory')
+      .select('*')
+      .eq('id', reservation.inventory_id)
+      .single();
+
+    if (productError) throw productError;
+
+    if (product.cantidadstock < reservation.cantidad_reservada) {
+      throw new Error('Stock insuficiente para confirmar la reserva');
+    }
+
+    // Procesar la venta
+    const saleData = {
+      cantidadVendida: reservation.cantidad_reservada,
+      precioVenta: reservation.precio_unitario,
+      metodoPago: metodoPago,
+      notas: `Venta confirmada desde reserva. Cliente: ${reservation.cliente}. ${reservation.notas || ''}`
+    };
+
+    const saleResult = await sellProductWithTransfer(reservation.inventory_id, saleData);
+
+    // Actualizar estado de la reserva
+    const { error: updateError } = await supabase
+      .from('reservations')
+      .update({ 
+        estado: 'confirmada',
+        fecha_confirmacion: new Date().toISOString(),
+        sale_id: saleResult.saleRecord[0].id
+      })
+      .eq('id', reservationId);
+
+    if (updateError) throw updateError;
+
+    console.log('✅ Reserva confirmada y venta procesada');
+
+    return {
+      success: true,
+      saleRecord: saleResult.saleRecord[0],
+      reservation: reservation,
+      message: `✅ Reserva confirmada para ${reservation.cliente}. Venta procesada exitosamente.`
+    };
+
+  } catch (error) {
+    console.error('❌ Error confirming reservation:', error);
+    throw error;
+  }
+};
+
+// Cancelar reserva
+export const cancelReservation = async (reservationId, motivo = '') => {
+  try {
+    console.log('❌ Cancelando reserva:', reservationId);
+
+    const { data, error } = await supabase
+      .from('reservations')
+      .update({ 
+        estado: 'cancelada',
+        fecha_cancelacion: new Date().toISOString(),
+        motivo_cancelacion: motivo
+      })
+      .eq('id', reservationId)
+      .select();
+
+    if (error) throw error;
+
+    console.log('✅ Reserva cancelada');
+
+    return {
+      success: true,
+      reservation: data[0],
+      message: `✅ Reserva cancelada. ${motivo ? 'Motivo: ' + motivo : ''}`
+    };
+
+  } catch (error) {
+    console.error('❌ Error canceling reservation:', error);
+    throw error;
+  }
+};
+
+// Actualizar reserva
+export const updateReservation = async (reservationId, updateData) => {
+  try {
+    console.log('📝 Actualizando reserva:', reservationId, updateData);
+
+    const { data, error } = await supabase
+      .from('reservations')
+      .update({
+        ...updateData,
+        fecha_actualizacion: new Date().toISOString()
+      })
+      .eq('id', reservationId)
+      .select();
+
+    if (error) throw error;
+
+    console.log('✅ Reserva actualizada');
+
+    return {
+      success: true,
+      reservation: data[0],
+      message: '✅ Reserva actualizada exitosamente'
+    };
+
+  } catch (error) {
+    console.error('❌ Error updating reservation:', error);
+    throw error;
+  }
+};
+
+// Obtener reservas de un cliente específico
+export const fetchReservationsByClient = async (clienteName) => {
+  try {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('*')
+      .ilike('cliente', `%${clienteName}%`)
+      .order('fecha_reserva', { ascending: false });
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('❌ Error fetching client reservations:', error);
+    throw error;
+  }
+};
+
+// Obtener estadísticas de reservas
+export const getReservationStats = async () => {
+  try {
+    const { data: allReservations, error } = await supabase
+      .from('reservations')
+      .select('estado, valor_reserva, total_producto');
+
+    if (error) throw error;
+
+    const stats = {
+      total: allReservations.length,
+      activas: allReservations.filter(r => r.estado === 'activa').length,
+      confirmadas: allReservations.filter(r => r.estado === 'confirmada').length,
+      canceladas: allReservations.filter(r => r.estado === 'cancelada').length,
+      valorTotalReservas: allReservations
+        .filter(r => r.estado === 'activa')
+        .reduce((sum, r) => sum + r.valor_reserva, 0),
+      valorTotalProductos: allReservations
+        .filter(r => r.estado === 'activa')
+        .reduce((sum, r) => sum + r.total_producto, 0)
+    };
+
+    return stats;
+  } catch (error) {
+    console.error('❌ Error getting reservation stats:', error);
+    throw error;
+  }
+};
+
+// Eliminar reserva permanentemente
+export const deleteReservation = async (reservationId) => {
+  try {
+    console.log('🗑️ Eliminando reserva:', reservationId);
+
+    // Obtener datos de la reserva antes de eliminarla
+    const { data: reservation, error: fetchError } = await supabase
+      .from('reservations')
+      .select('*')
+      .eq('id', reservationId)
+      .single();
+
+    if (fetchError) throw fetchError;
+    
+    if (!reservation) {
+      throw new Error('Reserva no encontrada');
+    }
+
+    // Eliminar la reserva de la base de datos
+    const { error: deleteError } = await supabase
+      .from('reservations')
+      .delete()
+      .eq('id', reservationId);
+
+    if (deleteError) throw deleteError;
+
+    console.log('✅ Reserva eliminada permanentemente');
+
+    return {
+      success: true,
+      reservation: reservation,
+      message: `✅ Reserva de ${reservation.cliente} eliminada permanentemente`
+    };
+
+  } catch (error) {
+    console.error('❌ Error deleting reservation:', error);
+    throw error;
+  }
+};
