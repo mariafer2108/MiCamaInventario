@@ -574,6 +574,13 @@ function App() {
           
           if (transferResult.success) {
             alertaStock += `✅ Stock repuesto automáticamente desde bodega: ${transferResult.message}`;
+            
+            // **AGREGAR ESTA LÍNEA: Actualizar el producto en la base de datos con el nuevo stock**
+            await updateItem(reservingItem.id, {
+              ...reservingItem,
+              cantidadstock: transferResult.newLocalStock,
+              estado: 'disponible'
+            });
           } else {
             alertaStock += `⚠️ No se pudo reponer stock desde bodega: ${transferResult.message}`;
           }
