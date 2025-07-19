@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Download, Search, Package, TrendingUp, AlertTriangle, ShoppingCart, DollarSign, Calendar, LogOut } from 'lucide-react';
 import './App.css';
 import { fetchInventory, addItem, updateItem, deleteItemFromDB, sellProduct, fetchSales, deleteSaleFromDB } from './supabaseService';
+import { supabase } from './supabaseClient';
 import Login from './Login';
 
 
@@ -9,7 +10,8 @@ function App() {
   // Estados de autenticación
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true); // Nuevo estado
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authInitialized, setAuthInitialized] = useState(false); // Nuevo estado
   
   const [inventory, setInventory] = useState([]);
   const [sales, setSales] = useState([]);
@@ -128,70 +130,110 @@ const getUniqueLocations = () => {
 
   // Verificar autenticación al cargar la aplicación
   useEffect(() => {
-    const checkAuth = () => {
+    let mounted = true;
+    
+    const initializeAuth = async () => {
       try {
-        const user = localStorage.getItem('currentUser');
-        if (user) {
-          const userData = JSON.parse(user);
-          setCurrentUser(userData);
-          setIsAuthenticated(true);
+        setAuthLoading(true);
+        
+        // Verificar sesión actual sin pausa innecesaria
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('Error getting session:', error);
+          if (mounted) {
+            setCurrentUser(null);
+            setIsAuthenticated(false);
+            setAuthLoading(false);
+            setAuthInitialized(true);
+          }
+          return;
+        }
+        
+        if (mounted) {
+          if (session?.user) {
+            console.log('User found in session:', session.user.email);
+            setCurrentUser(session.user);
+            setIsAuthenticated(true);
+          } else {
+            console.log('No user session found');
+            setCurrentUser(null);
+            setIsAuthenticated(false);
+          }
+          setAuthLoading(false);
+          setAuthInitialized(true);
         }
       } catch (error) {
-        console.error('Error parsing user data:', error);
-        localStorage.removeItem('currentUser');
-      } finally {
-        setAuthLoading(false);
+        console.error('Error initializing auth:', error);
+        if (mounted) {
+          setCurrentUser(null);
+          setIsAuthenticated(false);
+          setAuthLoading(false);
+          setAuthInitialized(true);
+        }
       }
     };
+
+    initializeAuth();
     
-    checkAuth();
+    // Escuchar cambios de autenticación
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.email);
+        
+        if (mounted) {
+          // Evitar cambios de estado durante INITIAL_SESSION
+          if (event === 'INITIAL_SESSION') {
+            return;
+          }
+          
+          if (session?.user) {
+            setCurrentUser(session.user);
+            setIsAuthenticated(true);
+          } else {
+            setCurrentUser(null);
+            setIsAuthenticated(false);
+            setInventory([]);
+            setSales([]);
+            setIsInitialized(false);
+          }
+          setAuthLoading(false);
+        }
+      }
+    );
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
-    let isMounted = true;
-    
-    // Solo cargar datos si está autenticado y no está en proceso de verificación de auth
-    if (!isAuthenticated || authLoading) {
-      return;
-    }
-    
     const loadData = async () => {
+      // Solo cargar datos si está autenticado y no está cargando auth
+      if (!isAuthenticated || authLoading) return;
+      
+      setIsLoading(true);
+      setError(null);
+      
       try {
-        setIsLoading(true);
-        setError(null);
-        
         const [inventoryData, salesData] = await Promise.all([
           fetchInventory(),
           fetchSales()
         ]);
         
-        // Solo actualizar el estado si el componente sigue montado
-        if (isMounted) {
-          setInventory(Array.isArray(inventoryData) ? inventoryData : []);
-          setSales(Array.isArray(salesData) ? salesData : []);
-          setIsInitialized(true);
-        }
+        setInventory(inventoryData || []);
+        setSales(salesData || []);
+        setIsInitialized(true);
       } catch (error) {
         console.error('Error loading data:', error);
-        if (isMounted) {
-          setError('Error al cargar los datos. Por favor, recarga la página.');
-          setInventory([]);
-          setSales([]);
-          setIsInitialized(true);
-        }
+        setError('Error al cargar los datos. Por favor, recarga la página.');
       } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
+        setIsLoading(false);
       }
     };
-    
+
     loadData();
-    
-    // Cleanup function
-    return () => {
-      isMounted = false;
-    };
   }, [isAuthenticated, authLoading]);
 
   // Función para manejar login exitoso
@@ -202,24 +244,26 @@ const getUniqueLocations = () => {
   };
 
   // Función para manejar logout
-  const handleLogout = () => {
-    localStorage.removeItem('currentUser');
-    setCurrentUser(null);
-    setIsAuthenticated(false);
-    setAuthLoading(false);
-    // Limpiar datos sensibles
-    setInventory([]);
-    setSales([]);
-    setIsInitialized(false);
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+      setCurrentUser(null);
+      setIsAuthenticated(false);
+      setInventory([]);
+      setSales([]);
+      setIsInitialized(false);
+    } catch (error) {
+      console.error('Error during logout:', error);
+    }
   };
 
   // Pantalla de carga inicial mientras se verifica la autenticación
-  if (authLoading) {
+  if (!authInitialized || authLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
+      <div className="min-h-screen flex items-center justify-center" style={{background: 'linear-gradient(135deg, #1e40af 0%, #1e3a8a 50%, #f59e0b 100%)'}}>
+        <div className="text-center bg-white rounded-2xl shadow-2xl p-8 animate-fade-in">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Verificando sesión...</p>
+          <p className="text-blue-600 font-medium">Cargando aplicación...</p>
         </div>
       </div>
     );
@@ -618,6 +662,119 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
     document.body.removeChild(link);
   };
 
+  const MobileInventoryCard = ({ item }) => (
+    <div className="mobile-card show-mobile">
+      <div className="mobile-card-header">
+        <div>
+          <div className="mobile-card-title">{item.nombre || 'Sin nombre'}</div>
+          <div className="mobile-card-subtitle">{item.codigo || 'N/A'}</div>
+        </div>
+        <div className="mobile-card-actions">
+          <button
+            onClick={() => sellItem(item)}
+            disabled={(item.cantidadstock || 0) <= 0}
+            className={`p-2 rounded ${(item.cantidadstock || 0) > 0 ? 'text-green-600' : 'text-gray-400'}`}
+            title="Vender"
+          >
+            <DollarSign className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => editItem(item)}
+            className="p-2 text-blue-600 rounded"
+            title="Editar"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => deleteItem(item.id)}
+            className="p-2 text-red-600 rounded"
+            title="Eliminar"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+      <div className="mobile-card-content">
+        <div className="mobile-card-field">
+          <div className="mobile-card-label">Categoría</div>
+          <div className="mobile-card-value">{item.categoria?.replace('_', ' ') || 'Sin categoría'}</div>
+        </div>
+        <div className="mobile-card-field">
+          <div className="mobile-card-label">Tamaño</div>
+          <div className="mobile-card-value">{item.tamaño || 'N/A'}</div>
+        </div>
+        <div className="mobile-card-field">
+          <div className="mobile-card-label">Stock</div>
+          <div className="mobile-card-value flex items-center">
+            {item.cantidadstock || 0}
+            {(item.cantidadstock || 0) <= (item.stockminimo || 0) && (
+              <AlertTriangle className="w-4 h-4 text-red-500 ml-1" />
+            )}
+          </div>
+        </div>
+        <div className="mobile-card-field">
+          <div className="mobile-card-label">Precio</div>
+          <div className="mobile-card-value">${(item.precioventa || 0).toLocaleString()}</div>
+        </div>
+        <div className="mobile-card-field">
+          <div className="mobile-card-label">Estado</div>
+          <div className="mobile-card-value">
+            <span className={`px-2 py-1 text-xs rounded-full ${
+              item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
+              item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
+              item.estado === 'vendido' ? 'bg-gray-100 text-gray-800' :
+              'bg-red-100 text-red-800'
+            }`}>
+              {item.estado || 'Sin estado'}
+            </span>
+          </div>
+        </div>
+        <div className="mobile-card-field">
+          <div className="mobile-card-label">Color</div>
+          <div className="mobile-card-value">{item.color || 'N/A'}</div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const MobileSalesCard = ({ sale }) => (
+    <div className="mobile-card show-mobile">
+      <div className="mobile-card-header">
+        <div>
+          <div className="mobile-card-title">{sale.nombre || 'Sin nombre'}</div>
+          <div className="mobile-card-subtitle">{new Date(sale.fecha_venta).toLocaleDateString('es-ES')}</div>
+        </div>
+        <div className="mobile-card-actions">
+          <button
+            onClick={() => deleteSale(sale.id)}
+            className="p-2 text-red-600 rounded"
+            title="Eliminar venta"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+      <div className="mobile-card-content">
+        <div className="mobile-card-field">
+          <div className="mobile-card-label">Cantidad</div>
+          <div className="mobile-card-value">{sale.cantidad_vendida}</div>
+        </div>
+        <div className="mobile-card-field">
+          <div className="mobile-card-label">Precio Unit.</div>
+          <div className="mobile-card-value">${sale.precio_venta}</div>
+        </div>
+        <div className="mobile-card-field">
+          <div className="mobile-card-label">Total</div>
+          <div className="mobile-card-value font-bold">${sale.total_venta}</div>
+        </div>
+        <div className="mobile-card-field">
+          <div className="mobile-card-label">Método Pago</div>
+          <div className="mobile-card-value capitalize">{sale.metodo_pago}</div>
+        </div>
+      </div>
+    </div>
+  );
+
   if (!isInitialized || isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -650,51 +807,73 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4">
+    <div className="min-h-screen" style={{background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)'}}>
+      <div className="gradient-bg shadow-lg">
+        <div className="max-w-7xl mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <img 
-                src="/img/micama.jpg" 
-                alt="MiCama Logo" 
-                className="h-10 w-10 object-contain"
-              />
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">Sistema de Inventario</h1>
-                <p className="text-gray-600">Bienvenido, {currentUser?.username}</p>
+            <div className="flex items-center gap-4">
+              <div className="bg-white p-2 rounded-lg shadow-md">
+                <img 
+                  src="/img/micama.jpg" 
+                  alt="MiCama Logo" 
+                  className="h-12 w-12 object-contain"
+                />
+              </div>
+              <div className="hidden-mobile">
+                <h1 className="text-3xl font-bold text-white flex items-center gap-2">
+                  Sistema de Inventario
+                  <span className="text-yellow-300">✨</span>
+                </h1>
+                <p className="text-blue-100">Bienvenido, <span className="text-yellow-300 font-semibold">{currentUser?.email}</span></p>
+              </div>
+              <div className="show-mobile">
+                <h1 className="text-xl font-bold text-white">
+                  MiCama ✨
+                </h1>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-3">
               <div className="flex space-x-2">
                 <button
                   onClick={() => setCurrentView('inventory')}
-                  className={`px-4 py-2 rounded-lg ${currentView === 'inventory' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
+                    currentView === 'inventory' 
+                      ? 'gold-gradient text-white shadow-lg transform scale-105' 
+                      : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
                 >
-                  <Package className="w-4 h-4 inline mr-2" />
-                  Inventario
+                  <Package className="w-4 h-4" />
+                  <span className="hidden-mobile">Inventario</span>
                 </button>
                 <button
                   onClick={() => setCurrentView('sales')}
-                  className={`px-4 py-2 rounded-lg ${currentView === 'sales' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
+                    currentView === 'sales' 
+                      ? 'gold-gradient text-white shadow-lg transform scale-105' 
+                      : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
                 >
-                  <ShoppingCart className="w-4 h-4 inline mr-2" />
-                  Ventas
+                  <ShoppingCart className="w-4 h-4" />
+                  <span className="hidden-mobile">Ventas</span>
                 </button>
                 <button
                   onClick={() => setCurrentView('dashboard')}
-                  className={`px-4 py-2 rounded-lg ${currentView === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                  className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
+                    currentView === 'dashboard' 
+                      ? 'gold-gradient text-white shadow-lg transform scale-105' 
+                      : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
                 >
-                  <TrendingUp className="w-4 h-4 inline mr-2" />
-                  Dashboard
+                  <TrendingUp className="w-4 h-4" />
+                  <span className="hidden-mobile">Dashboard</span>
                 </button>
               </div>
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                className="flex items-center gap-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-300 shadow-lg hover:shadow-xl"
               >
                 <LogOut className="w-4 h-4" />
-                Cerrar Sesión
+                <span className="hidden-mobile">Cerrar Sesión</span>
               </button>
             </div>
           </div>
@@ -703,16 +882,18 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
 
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Filtros de fecha para todas las vistas */}
-        <div className="mb-6 bg-white p-4 rounded-lg shadow">
+        <div className="mb-6 bg-white rounded-xl shadow-lg card-shadow p-6 gold-accent animate-fade-in">
           <div className="flex flex-wrap gap-4 items-center">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-gray-500" />
-              <span className="text-sm font-medium text-gray-700">Filtrar por fecha:</span>
+            <div className="flex items-center gap-3">
+              <div className="p-2 gold-gradient rounded-lg">
+                <Calendar className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-lg font-semibold text-gray-800">Filtrar por fecha:</span>
             </div>
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-4 py-3 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300 hover:border-blue-300"
             >
               {years.map(year => (
                 <option key={year.value} value={year.value}>{year.label}</option>
@@ -721,15 +902,15 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
             <select
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-4 py-3 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300 hover:border-blue-300"
             >
               {months.map(month => (
                 <option key={month.value} value={month.value}>{month.label}</option>
               ))}
             </select>
             {selectedMonth !== 'all' && (
-              <span className="text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded">
-                {currentView === 'inventory' ? 'Inventario' : currentView === 'sales' ? 'Ventas' : 'Datos'} de {months.find(m => m.value === selectedMonth)?.label} {selectedYear}
+              <span className="text-sm gold-gradient text-white px-4 py-2 rounded-full font-medium shadow-md">
+                📊 {currentView === 'inventory' ? 'Inventario' : currentView === 'sales' ? 'Ventas' : 'Datos'} de {months.find(m => m.value === selectedMonth)?.label} {selectedYear}
               </span>
             )}
           </div>
@@ -777,19 +958,19 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
   ))}
 </select>
               </div>
-              <div className="flex gap-2 action-buttons">
+              <div className="flex gap-3 action-buttons">
                 <button
                   onClick={exportToTXT}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                  className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 transition-all duration-300 hover-lift shadow-lg"
                 >
-                  <Download className="w-4 h-4" />
+                  <Download className="w-5 h-5" />
                   Exportar TXT
                 </button>
                 <button
                   onClick={() => setIsModalOpen(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+                  className="px-6 py-3 gold-gradient text-white rounded-lg hover:shadow-xl flex items-center gap-2 transition-all duration-300 hover-lift shadow-lg"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-5 h-5" />
                   Nuevo Artículo
                 </button>
               </div>
@@ -800,7 +981,8 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
               {selectedMonth !== 'all' && ` (ingresados en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear})`}
             </div>
 
-            <div className="bg-white rounded-lg shadow overflow-hidden">
+            {/* Vista de tabla para desktop */}
+            <div className="bg-white rounded-lg shadow overflow-hidden hidden-mobile">
               <div className="overflow-x-auto table-scroll table-responsive">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -888,6 +1070,22 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
                 </table>
               </div>
             </div>
+
+            {/* Vista de cards para móvil */}
+            <div className="show-mobile">
+              {filteredInventory.length === 0 ? (
+                <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                  {isLoading ? 'Cargando inventario...' : 'No hay productos que coincidan con los filtros'}
+                </div>
+              ) : (
+                <div>
+                  {filteredInventory.map((item) => {
+                    if (!item || !item.id) return null;
+                    return <MobileInventoryCard key={item.id} item={item} />;
+                  })}
+                </div>
+              )}
+            </div>
           </>
         )}
 
@@ -910,7 +1108,8 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
               Mostrando {filteredSales.length} de {safeSales.length} ventas
               {selectedMonth !== 'all' && ` (realizadas en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear})`}
             </div>
-                           <div className="bg-white rounded-lg shadow overflow-hidden">
+            {/* Vista de tabla para desktop */}
+            <div className="bg-white rounded-lg shadow overflow-hidden hidden-mobile">
               <div className="overflow-x-auto max-h-96 overflow-y-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50 sticky top-0">
@@ -963,6 +1162,24 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
                   </tbody>
                 </table>
                </div>
+            </div>
+
+            {/* Vista de cards para móvil */}
+            <div className="show-mobile">
+              {filteredSales.length === 0 ? (
+                <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                  {selectedMonth !== 'all' 
+                    ? `No hay ventas registradas en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`
+                    : 'No hay ventas registradas'
+                  }
+                </div>
+              ) : (
+                <div>
+                  {filteredSales.map((sale) => (
+                    <MobileSalesCard key={sale.id} sale={sale} />
+                  ))}
+                </div>
+              )}
             </div>
           </>
         )}

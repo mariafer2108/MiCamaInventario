@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, User, Lock, UserPlus } from 'lucide-react';
+import { supabase } from './supabaseClient';
 
 const Login = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
   const [formData, setFormData] = useState({
-    username: '',
+    email: '',
     password: '',
     confirmPassword: ''
   });
@@ -21,18 +22,21 @@ const Login = ({ onLogin }) => {
   };
 
   const validateForm = () => {
-    if (!formData.username || !formData.password) {
+    if (!formData.email || !formData.password) {
       setError('Por favor, completa todos los campos');
       return false;
     }
-    if (formData.username.length < 3) {
-      setError('El usuario debe tener al menos 3 caracteres');
+    
+    if (!formData.email.includes('@')) {
+      setError('Por favor ingresa un email válido');
       return false;
     }
+
     if (formData.password.length < 6) {
       setError('La contraseña debe tener al menos 6 caracteres');
       return false;
     }
+
     if (!isLogin && formData.password !== formData.confirmPassword) {
       setError('Las contraseñas no coinciden');
       return false;
@@ -48,48 +52,34 @@ const Login = ({ onLogin }) => {
     setError('');
 
     try {
-      // Simular delay de autenticación
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
       if (isLogin) {
-        // Verificar credenciales
-        const users = JSON.parse(localStorage.getItem('inventoryUsers') || '[]');
-        const user = users.find(u => u.username === formData.username && u.password === formData.password);
-        
-        if (user) {
-          localStorage.setItem('currentUser', JSON.stringify({
-            username: user.username,
-            loginTime: new Date().toISOString()
-          }));
-          onLogin(user);
+        // Iniciar sesión con Supabase
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: formData.email,
+          password: formData.password,
+        });
+
+        if (error) {
+          setError('Email o contraseña incorrectos');
         } else {
-          setError('Usuario o contraseña incorrectos');
+          onLogin(data.user);
         }
       } else {
-        // Registrar nuevo usuario
-        const users = JSON.parse(localStorage.getItem('inventoryUsers') || '[]');
-        
-        if (users.find(u => u.username === formData.username)) {
-          setError('El usuario ya existe');
-          return;
-        }
-
-        const newUser = {
-          id: Date.now(),
-          username: formData.username,
+        // Registrarse con Supabase
+        const { data, error } = await supabase.auth.signUp({
+          email: formData.email,
           password: formData.password,
-          createdAt: new Date().toISOString()
-        };
+        });
 
-        users.push(newUser);
-        localStorage.setItem('inventoryUsers', JSON.stringify(users));
-        
-        localStorage.setItem('currentUser', JSON.stringify({
-          username: newUser.username,
-          loginTime: new Date().toISOString()
-        }));
-        
-        onLogin(newUser);
+        if (error) {
+          setError(error.message);
+        } else {
+          if (data.user && !data.user.email_confirmed_at) {
+            setError('Por favor verifica tu email antes de iniciar sesión');
+          } else {
+            onLogin(data.user);
+          }
+        }
       }
     } catch (error) {
       setError('Error en el servidor. Inténtalo de nuevo.');
@@ -99,39 +89,39 @@ const Login = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="max-w-md w-full space-y-8">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+    <div className="min-h-screen flex items-center justify-center p-4" style={{background: 'linear-gradient(135deg, #1e40af 0%, #1e3a8a 50%, #f59e0b 100%)'}}>
+      <div className="max-w-md w-full space-y-8 animate-fade-in">
+        <div className="bg-white rounded-2xl shadow-2xl p-8 card-shadow">
           <div className="text-center mb-8">
-            <div className="mx-auto h-16 w-16 bg-white rounded-lg flex items-center justify-center mb-4 shadow-lg p-2">
+            <div className="mx-auto h-20 w-20 bg-white rounded-xl flex items-center justify-center mb-6 shadow-lg p-3 border-2 border-blue-200">
               <img 
                 src="/img/micama.jpg" 
                 alt="MiCama Logo" 
-                className="h-12 w-12 object-contain"
+                className="h-14 w-14 object-contain"
               />
             </div>
-            <h2 className="text-3xl font-bold text-gray-900">
+            <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 bg-clip-text text-transparent">
               {isLogin ? 'Iniciar Sesión' : 'Registrarse'}
             </h2>
-            <p className="text-gray-600 mt-2">
-              {isLogin ? 'Accede a tu inventario' : 'Crea tu cuenta para comenzar'}
+            <p className="text-gray-600 mt-2 text-lg">
+              {isLogin ? 'Accede a tu inventario ✨' : 'Crea tu cuenta para comenzar 🚀'}
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Usuario
+                Email
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                 <input
-                  type="text"
-                  name="username"
-                  value={formData.username}
+                  type="email"
+                  name="email"
+                  value={formData.email}
                   onChange={handleInputChange}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Ingresa tu usuario"
+                  placeholder="Ingresa tu email"
                   disabled={isLoading}
                 />
               </div>
@@ -191,7 +181,7 @@ const Login = ({ onLogin }) => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
+              className="w-full gold-gradient text-white py-4 px-6 rounded-lg hover:shadow-xl focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-300 font-semibold text-lg"
             >
               {isLoading ? (
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
@@ -209,23 +199,13 @@ const Login = ({ onLogin }) => {
               onClick={() => {
                 setIsLogin(!isLogin);
                 setError('');
-                setFormData({ username: '', password: '', confirmPassword: '' });
+                setFormData({ email: '', password: '', confirmPassword: '' });
               }}
               className="text-blue-600 hover:text-blue-700 text-sm font-medium"
               disabled={isLoading}
             >
               {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
             </button>
-          </div>
-        </div>
-        <div className="text-center text-sm text-gray-500">
-          <div className="flex items-center justify-center gap-2 mb-1">
-            <img 
-              src="/img/micama.jpg" 
-              alt="MiCama Logo" 
-              className="h-6 w-6 object-contain"
-            />
-            <p>Sistema de Inventario MiCama</p>
           </div>
         </div>
       </div>
