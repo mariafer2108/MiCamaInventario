@@ -70,6 +70,7 @@ function App() {
   const [isReservationModalOpen, setIsReservationModalOpen] = useState(false);
   const [reservingItem, setReservingItem] = useState(null);
   const [reservationFilter, setReservationFilter] = useState('all');
+  const [reservationSort, setReservationSort] = useState('fecha'); // Nuevo estado para ordenamiento
   const [reservationData, setReservationData] = useState({
     cantidadReservada: '',
     valorReserva: 0,
@@ -877,12 +878,14 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
       return str.length > width ? str.substring(0, width-3) + '...' : str.padEnd(width);
     };
     
-    const headers = `${'FECHA'.padEnd(12)} | ${'PRODUCTO'.padEnd(25)} | ${'CATEGORÍA'.padEnd(15)} | ${'CANT.'.padEnd(6)} | ${'P.UNIT'.padEnd(10)} | ${'TOTAL'.padEnd(10)} | ${'PAGO'.padEnd(10)}`;
+    const headers = `${'FECHA Y HORA'.padEnd(18)} | ${'PRODUCTO'.padEnd(25)} | ${'CATEGORÍA'.padEnd(15)} | ${'CANT.'.padEnd(6)} | ${'P.UNIT'.padEnd(10)} | ${'TOTAL'.padEnd(10)} | ${'PAGO'.padEnd(10)}`;
     const separator = '='.repeat(headers.length);
     
-    const rows = filteredSales.map(sale => 
-      `${formatField(new Date(sale.fecha_venta).toLocaleDateString('es-ES'), 12)} | ${formatField(sale.nombre, 25)} | ${formatField(sale.categoria, 15)} | ${formatField(sale.cantidad_vendida, 6)} | ${formatField(`$${sale.precio_venta}`, 10)} | ${formatField(`$${sale.total_venta}`, 10)} | ${formatField(sale.metodo_pago, 10)}`
-    );
+    const rows = filteredSales.map(sale => {
+      const fechaCompleta = new Date(sale.fecha_venta);
+      const fechaFormateada = `${fechaCompleta.toLocaleDateString('es-ES')} ${fechaCompleta.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
+      return `${formatField(fechaFormateada, 18)} | ${formatField(sale.nombre, 25)} | ${formatField(sale.categoria, 15)} | ${formatField(sale.cantidad_vendida, 6)} | ${formatField(`$${sale.precio_venta}`, 10)} | ${formatField(`$${sale.total_venta}`, 10)} | ${formatField(sale.metodo_pago, 10)}`;
+    });
     
     // Calcular totales
     const totalVentas = filteredSales.reduce((sum, sale) => sum + (parseFloat(sale.total_venta) || 0), 0);
@@ -1030,7 +1033,12 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
     <div className="mobile-card-header">
       <div>
         <div className="mobile-card-title">{sale.nombre || 'Sin nombre'}</div>
-        <div className="mobile-card-subtitle">{new Date(sale.fecha_venta).toLocaleDateString('es-ES')}</div>
+        <div className="mobile-card-subtitle">
+          {new Date(sale.fecha_venta).toLocaleDateString('es-ES')} - {new Date(sale.fecha_venta).toLocaleTimeString('es-ES', { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+          })}
+        </div>
       </div>
       <div className="mobile-card-actions">
         <button
@@ -1581,7 +1589,17 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                       filteredSales.map((sale) => (
                         <tr key={sale.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {new Date(sale.fecha_venta).toLocaleDateString('es-ES')}
+                            <div>
+                              <div className="font-medium">
+                                {new Date(sale.fecha_venta).toLocaleDateString('es-ES')}
+                              </div>
+                              <div className="text-xs text-gray-400">
+                                {new Date(sale.fecha_venta).toLocaleTimeString('es-ES', { 
+                                  hour: '2-digit', 
+                                  minute: '2-digit' 
+                                })}
+                              </div>
+                            </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="text-sm font-medium text-gray-900">{sale.nombre}</div>
@@ -1725,16 +1743,28 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
             <div className="bg-white rounded-lg shadow p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold">Gestión de Reservas</h2>
-                <select
-                  value={reservationFilter}
-                  onChange={(e) => setReservationFilter(e.target.value)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg"
-                >
-                  <option value="all">Todas las reservas</option>
-                  <option value="activa">Activas</option>
-                  <option value="confirmada">Confirmadas</option>
-                  <option value="cancelada">Canceladas</option>
-                </select>
+                <div className="flex gap-4">
+                  <select
+                    value={reservationFilter}
+                    onChange={(e) => setReservationFilter(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                  >
+                    <option value="all">Todas las reservas</option>
+                    <option value="activa">Activas</option>
+                    <option value="confirmada">Confirmadas</option>
+                    <option value="cancelada">Canceladas</option>
+                  </select>
+                  <select
+                    value={reservationSort}
+                    onChange={(e) => setReservationSort(e.target.value)}
+                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                  >
+                    <option value="fecha">Ordenar por Fecha</option>
+                    <option value="cliente">Ordenar por Cliente</option>
+                    <option value="producto">Ordenar por Producto</option>
+                    <option value="valor">Ordenar por Valor</option>
+                  </select>
+                </div>
               </div>
 
               <div className="overflow-x-auto">
@@ -1752,6 +1782,21 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                   <tbody className="bg-white divide-y divide-gray-200">
                     {reservations
                       .filter(reservation => reservationFilter === 'all' || reservation.estado === reservationFilter)
+                      .sort((a, b) => {
+                        switch (reservationSort) {
+                          case 'cliente':
+                            return a.cliente.localeCompare(b.cliente, 'es', { sensitivity: 'base' });
+                          case 'producto':
+                            const productA = inventory.find(item => item.id === a.inventory_id);
+                            const productB = inventory.find(item => item.id === b.inventory_id);
+                            return (productA?.nombre || '').localeCompare(productB?.nombre || '', 'es', { sensitivity: 'base' });
+                          case 'valor':
+                            return (b.valor_reserva || 0) - (a.valor_reserva || 0);
+                          case 'fecha':
+                          default:
+                            return new Date(b.fecha_reserva) - new Date(a.fecha_reserva);
+                        }
+                      })
                       .map((reservation) => {
                         const product = inventory.find(item => item.id === reservation.inventory_id);
                         return (

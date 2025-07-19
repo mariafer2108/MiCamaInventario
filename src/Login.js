@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, User, Lock, UserPlus } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, UserPlus } from 'lucide-react';
 import { supabase } from './supabaseClient';
+
+// Lista de emails autorizados - MODIFICA ESTA LISTA
+const AUTHORIZED_EMAILS = [
+  'carolina29barriga@gmail.com',
+  'navarromunoz.mariafer@gmail.com',
+];
 
 const Login = ({ onLogin }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -21,6 +27,7 @@ const Login = ({ onLogin }) => {
     setError('');
   };
 
+  // En la función validateForm, agrega esta validación:
   const validateForm = () => {
     if (!formData.email || !formData.password) {
       setError('Por favor, completa todos los campos');
@@ -29,6 +36,12 @@ const Login = ({ onLogin }) => {
     
     if (!formData.email.includes('@')) {
       setError('Por favor ingresa un email válido');
+      return false;
+    }
+  
+    // Validación de email autorizado - CORREGIDO
+    if (!AUTHORIZED_EMAILS.includes(formData.email.toLowerCase())) {
+      setError('Este email no está autorizado para acceder al sistema.');
       return false;
     }
 
@@ -60,26 +73,17 @@ const Login = ({ onLogin }) => {
         });
 
         if (error) {
-          setError('Email o contraseña incorrectos');
+          if (error.message.includes('Invalid login credentials')) {
+            setError('Email o contraseña incorrectos');
+          } else {
+            setError('Error de autenticación. Verifica tus credenciales.');
+          }
         } else {
           onLogin(data.user);
         }
       } else {
-        // Registrarse con Supabase
-        const { data, error } = await supabase.auth.signUp({
-          email: formData.email,
-          password: formData.password,
-        });
-
-        if (error) {
-          setError(error.message);
-        } else {
-          if (data.user && !data.user.email_confirmed_at) {
-            setError('Por favor verifica tu email antes de iniciar sesión');
-          } else {
-            onLogin(data.user);
-          }
-        }
+        // Mostrar mensaje para registro
+        setError('El registro está deshabilitado. Solo usuarios autorizados pueden acceder. Contacta al administrador si necesitas acceso.');
       }
     } catch (error) {
       setError('Error en el servidor. Inténtalo de nuevo.');
