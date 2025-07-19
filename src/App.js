@@ -134,6 +134,14 @@ function App() {
     { value: 'super king', label: 'Super King' }
   ];
 
+  // Tamaños específicos para almohadas con las medidas exactas
+  const pillowSizes = [
+    { value: 'all', label: 'Todos los tamaños' },
+    { value: '40x60 cm', label: '40x60 cm (Pequeña)' },
+    { value: '50x70 cm', label: '50x70 cm (Estándar)' },
+    { value: '50x90 cm', label: '50x90 cm (Grande)' }
+  ];
+
   const estados = [
     { value: 'disponible', label: 'Disponible' },
     { value: 'reservado', label: 'Reservado' },
@@ -441,6 +449,8 @@ function App() {
     setEditingItem(null);
   };
 
+
+
   const resetSaleForm = () => {
     setSaleData({
       cantidadVendida: 1,
@@ -737,6 +747,10 @@ function App() {
       valorReserva: valorCalculado
     });
   };
+
+
+
+
   const editItem = (item) => {
     setFormData({
       nombre: item.nombre,
@@ -823,7 +837,7 @@ Total de productos: ${filteredInventory.length}
     const headers = `${'NOMBRE'.padEnd(25)} | ${'CATEGORÍA'.padEnd(15)} | ${'TAMAÑO'.padEnd(12)} | ${'COLOR'.padEnd(15)} | ${'STOCK'.padEnd(8)} | ${'PRECIO'.padEnd(10)} | ${'UBICACIÓN'.padEnd(15)} | ${'ESTADO'.padEnd(12)}`;
     const separator = '='.repeat(headers.length);
     
-    const rows = filteredInventory.map(item => 
+    const rows = sortPillowsByDimensions(filteredInventory).map(item => 
       `${formatField(item.nombre, 25)} | ${formatField(item.categoria, 15)} | ${formatField(item.tamaño, 12)} | ${formatField(item.color, 15)} | ${formatField(item.cantidadstock, 8)} | ${formatField(`$${item.precioventa}`, 10)} | ${formatField(item.ubicacion, 15)} | ${formatField(item.estado, 12)}`
     );
     
@@ -831,7 +845,7 @@ Total de productos: ${filteredInventory.length}
     
     // Crear resumen por categoría
     const categoryStats = {};
-    filteredInventory.forEach(item => {
+    sortPillowsByDimensions(filteredInventory).forEach(item => {
       if (!categoryStats[item.categoria]) {
         categoryStats[item.categoria] = { count: 0, totalStock: 0 };
       }
@@ -881,7 +895,7 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
     const headers = `${'FECHA Y HORA'.padEnd(18)} | ${'PRODUCTO'.padEnd(25)} | ${'CATEGORÍA'.padEnd(15)} | ${'CANT.'.padEnd(6)} | ${'P.UNIT'.padEnd(10)} | ${'TOTAL'.padEnd(10)} | ${'PAGO'.padEnd(10)}`;
     const separator = '='.repeat(headers.length);
     
-    const rows = filteredSales.map(sale => {
+    const rows = sortPillowsByDimensions(filteredSales).map(sale => {
       const fechaCompleta = new Date(sale.fecha_venta);
       const fechaFormateada = `${fechaCompleta.toLocaleDateString('es-ES')} ${fechaCompleta.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
       return `${formatField(fechaFormateada, 18)} | ${formatField(sale.nombre, 25)} | ${formatField(sale.categoria, 15)} | ${formatField(sale.cantidad_vendida, 6)} | ${formatField(`$${sale.precio_venta}`, 10)} | ${formatField(`$${sale.total_venta}`, 10)} | ${formatField(sale.metodo_pago, 10)}`;
@@ -895,7 +909,7 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
     
     // Resumen por método de pago
     const paymentStats = {};
-    filteredSales.forEach(sale => {
+    sortPillowsByDimensions(filteredSales).forEach(sale => {
       if (!paymentStats[sale.metodo_pago]) {
         paymentStats[sale.metodo_pago] = { count: 0, total: 0 };
       }
@@ -1117,7 +1131,7 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
     }
   };
   
-  const filteredInventory = dateFilteredInventory.filter(item => {
+  let filteredInventory = dateFilteredInventory.filter(item => {
     if (!item || typeof item !== 'object') return false;
     
     try {
@@ -1137,23 +1151,63 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
       return false;
     }
   });
-  
+
   // Aplicar filtros a las ventas
   const filteredSales = filterSalesByDate(safeSales);
 
-  const lowStockItems = dateFilteredInventory.filter(item => 
-    item && typeof item.cantidadstock === 'number' && typeof item.stockminimo === 'number' && 
-    item.cantidadstock <= item.stockminimo
+  // Función para ordenar almohadas por dimensiones (de menor a mayor)
+  const sortPillowsByDimensions = (items) => {
+    return items.sort((a, b) => {
+      // Si no son almohadas, mantener orden original
+      if (a.categoria !== 'Almohada' && b.categoria !== 'Almohada') {
+        return 0;
+      }
+      
+      // Priorizar almohadas al inicio si hay mezcla de categorías
+      if (a.categoria === 'Almohada' && b.categoria !== 'Almohada') {
+        return -1;
+      }
+      if (a.categoria !== 'Almohada' && b.categoria === 'Almohada') {
+        return 1;
+      }
+      
+      // Ambos son almohadas, ordenar por dimensiones
+      const extractArea = (size) => {
+        const match = size.match(/(\d+)x(\d+)/);
+        if (match) {
+          return parseInt(match[1]) * parseInt(match[2]); // Área total
+        }
+        return 0;
+      };
+      
+      const areaA = extractArea(a.tamaño || '');
+      const areaB = extractArea(b.tamaño || '');
+      
+      return areaA - areaB; // Ordenar de menor a mayor área
+    });
+  };
+
+  // Aplicar ordenamiento especial para almohadas
+  if (selectedCategory === 'Almohada' || 
+      (selectedCategory === 'all' && filteredInventory.some(item => item.categoria === 'Almohada'))) {
+    filteredInventory = sortPillowsByDimensions(filteredInventory);
+  }
+
+  const lowStockItems = sortPillowsByDimensions(
+    dateFilteredInventory.filter(item => 
+      item && typeof item.cantidadstock === 'number' && typeof item.stockminimo === 'number' && 
+      item.cantidadstock <= item.stockminimo
+    )
   );
   
-  const totalValue = dateFilteredInventory.reduce((sum, item) => {
+  const totalValue = sortPillowsByDimensions(dateFilteredInventory).reduce((sum, item) => {
     if (!item || typeof item.cantidadstock !== 'number' || typeof item.precioventa !== 'number') {
       return sum;
     }
     return sum + (item.cantidadstock * item.precioventa);
   }, 0);
   
-  const totalItems = dateFilteredInventory.reduce((sum, item) => {
+  const totalItems = sortPillowsByDimensions(dateFilteredInventory).reduce((sum, item) => {
     if (!item || typeof item.cantidadstock !== 'number') {
       return sum;
     }
@@ -1367,7 +1421,7 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
   onChange={(e) => setSelectedSize(e.target.value)}
   className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
 >
-  {sizes.map(size => (
+  {(selectedCategory === 'Almohada' ? pillowSizes : sizes).map(size => (
     <option key={size.value} value={size.value}>{size.label}</option>
   ))}
 </select>
@@ -1426,7 +1480,7 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                         </td>
                       </tr>
                     ) : (
-                      filteredInventory.map((item) => {
+                      sortPillowsByDimensions(filteredInventory).map((item) => {
                         if (!item || !item.id) return null;
                         
                         return (
@@ -1436,7 +1490,11 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                               <div className="text-sm text-gray-500">
                                 {item.codigo && `${item.codigo}`}
                                 {item.codigo && item.tamaño && ' - '}
-                                {item.tamaño && `${item.tamaño}`}
+                                {item.tamaño && (
+                                  <span className={item.categoria === 'Almohada' ? 'font-medium text-blue-600' : ''}>
+                                    {item.categoria === 'Almohada' && '📏 '}{item.tamaño}
+                                  </span>
+                                )}
                                 {(item.codigo || item.tamaño) && item.color && ' - '}
                                 {item.color && `${item.color}`}
                               </div>
@@ -1525,7 +1583,7 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                 </div>
               ) : (
                 <div>
-                  {filteredInventory.map((item) => {
+                  {sortPillowsByDimensions(filteredInventory).map((item) => {
                     if (!item || !item.id) return null;
                     return <MobileInventoryCard 
                       key={item.id} 
@@ -1586,7 +1644,7 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                         </td>
                       </tr>
                     ) : (
-                      filteredSales.map((sale) => (
+                      sortPillowsByDimensions(filteredSales).map((sale) => (
                         <tr key={sale.id} className="hover:bg-gray-50">
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             <div>
@@ -1637,7 +1695,7 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                 </div>
               ) : (
                 <div>
-                  {filteredSales.map((sale) => (
+                  {sortPillowsByDimensions(filteredSales).map((sale) => (
                     <MobileSalesCard 
                       key={sale.id} 
                       sale={sale} 
@@ -1780,8 +1838,10 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {reservations
-                      .filter(reservation => reservationFilter === 'all' || reservation.estado === reservationFilter)
+                    {sortPillowsByDimensions(
+                      reservations
+                        .filter(reservation => reservationFilter === 'all' || reservation.estado === reservationFilter)
+                    )
                       .sort((a, b) => {
                         switch (reservationSort) {
                           case 'cliente':
@@ -1909,7 +1969,35 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                   <select
                     id="categoria"
                     value={formData.categoria}
-                    onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
+                    onChange={(e) => {
+                      const newCategory = e.target.value;
+                      let newSize = formData.tamaño;
+                      
+                      // Solo cambiar el tamaño si realmente cambió la categoría
+                      if (newCategory !== formData.categoria) {
+                        // Si cambia a Almohada y el tamaño actual no es válido para almohadas
+                        if (newCategory === 'Almohada' && !['40x60 cm', '50x70 cm', '50x90 cm'].includes(formData.tamaño)) {
+                          newSize = '50x70 cm'; // Solo si el tamaño actual no es válido para almohadas
+                        }
+                        // Si cambia de Almohada a otra categoría y el tamaño actual es de almohada
+                        else if (newCategory !== 'Almohada' && ['40x60 cm', '50x70 cm', '50x90 cm'].includes(formData.tamaño)) {
+                          newSize = '1 plaza'; // Solo si el tamaño actual es de almohada
+                        }
+                      }
+                      
+                      console.log('🔍 Cambio de tamaño detectado:', {
+                        tamaño_anterior: formData.tamaño,
+                        tamaño_nuevo: newSize,
+                        categoria: newCategory,
+                        categoria_anterior: formData.categoria
+                      });
+                      
+                      setFormData({ 
+                        ...formData, 
+                        categoria: newCategory,
+                        tamaño: newSize
+                      });
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     {categories.slice(1).map(cat => (
@@ -1922,10 +2010,25 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                   <select
                     id="tamaño"
                     value={formData.tamaño}
-                    onChange={(e) => setFormData({ ...formData, tamaño: e.target.value })}
+                    onChange={(e) => {
+                      const newSize = e.target.value;
+                      console.log('📏 Cambio directo de tamaño:', {
+                        valor_anterior: formData.tamaño,
+                        valor_nuevo: newSize,
+                        categoria_actual: formData.categoria,
+                        timestamp: new Date().toLocaleTimeString()
+                      });
+                      
+                      // Forzar el cambio de estado de manera más explícita
+                      setFormData(prevData => {
+                        const newData = { ...prevData, tamaño: newSize };
+                        console.log('📋 Estado actualizado:', newData);
+                        return newData;
+                      });
+                    }}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    {sizes.map(size => (
+                    {(formData.categoria === 'Almohada' ? pillowSizes.filter(size => size.value !== 'all') : sizes.slice(1)).map(size => (
                       <option key={size.value} value={size.value}>{size.label}</option>
                     ))}
                   </select>
