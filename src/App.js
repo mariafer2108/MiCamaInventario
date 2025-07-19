@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Edit2, Trash2, Download, Search, Package, TrendingUp, AlertTriangle, ShoppingCart, DollarSign, Calendar, LogOut } from 'lucide-react';
 import './App.css';
-import { fetchInventory, addItem, updateItem, deleteItemFromDB, sellProduct, fetchSales, deleteSaleFromDB } from './supabaseService';
+import { fetchInventory, addItem, updateItem, deleteItemFromDB, sellProductWithTransfer, fetchSales, deleteSaleFromDB } from './supabaseService';
 import { supabase } from './supabaseClient';
 import Login from './Login';
 
@@ -365,17 +365,28 @@ function App() {
         notas: saleData.notas
       };
 
-      await sellProduct(sellingItem.id, saleInfo);
+      // Usar la nueva función con transferencia automática
+      const result = await sellProductWithTransfer(sellingItem.id, saleInfo);
       
       // Recargar datos
       const [inventoryData, salesData] = await Promise.all([
         fetchInventory(),
         fetchSales()
       ]);
-      setInventory(inventoryData);
-      setSales(salesData);
+      setInventory(inventoryData || []);
+      setSales(salesData || []);
       
-      alert('Venta registrada exitosamente.');
+      // Mostrar mensaje de éxito con información de transferencia
+      let message = 'Venta registrada exitosamente.';
+      if (result.transferResult) {
+        if (result.transferResult.success) {
+          message += `\n\n✅ ${result.transferResult.message}`;
+        } else {
+          message += `\n\n⚠️ ${result.transferResult.message}`;
+        }
+      }
+      
+      alert(message);
       resetSaleForm();
       setIsSaleModalOpen(false);
     } catch (error) {
