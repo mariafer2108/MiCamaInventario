@@ -559,7 +559,7 @@ Total de productos: ${filteredInventory.length}
     
     // Formatear datos con espaciado fijo
     const formatField = (value, width) => {
-      const str = (value || 'N/A').toString();
+      const str = (value || '').toString();
       return str.length > width ? str.substring(0, width-3) + '...' : str.padEnd(width);
     };
     
@@ -617,7 +617,7 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
     
     // Formatear datos con espaciado fijo
     const formatField = (value, width) => {
-      const str = (value || 'N/A').toString();
+      const str = (value || '').toString();
       return str.length > width ? str.substring(0, width-3) + '...' : str.padEnd(width);
     };
     
@@ -667,7 +667,9 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
       <div className="mobile-card-header">
         <div>
           <div className="mobile-card-title">{item.nombre || 'Sin nombre'}</div>
-          <div className="mobile-card-subtitle">{item.codigo || 'N/A'}</div>
+          {item.codigo && (
+            <div className="mobile-card-subtitle">{item.codigo}</div>
+          )}
         </div>
         <div className="mobile-card-actions">
           <button
@@ -699,10 +701,12 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
           <div className="mobile-card-label">Categoría</div>
           <div className="mobile-card-value">{item.categoria?.replace('_', ' ') || 'Sin categoría'}</div>
         </div>
-        <div className="mobile-card-field">
-          <div className="mobile-card-label">Tamaño</div>
-          <div className="mobile-card-value">{item.tamaño || 'N/A'}</div>
-        </div>
+        {item.tamaño && (
+          <div className="mobile-card-field">
+            <div className="mobile-card-label">Tamaño</div>
+            <div className="mobile-card-value">{item.tamaño}</div>
+          </div>
+        )}
         <div className="mobile-card-field">
           <div className="mobile-card-label">Stock</div>
           <div className="mobile-card-value flex items-center">
@@ -729,10 +733,12 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
             </span>
           </div>
         </div>
-        <div className="mobile-card-field">
-          <div className="mobile-card-label">Color</div>
-          <div className="mobile-card-value">{item.color || 'N/A'}</div>
-        </div>
+        {item.color && (
+          <div className="mobile-card-field">
+            <div className="mobile-card-label">Color</div>
+            <div className="mobile-card-value">{item.color}</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1010,7 +1016,13 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
                           <tr key={item.id} className="hover:bg-gray-50">
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="text-sm font-medium text-gray-900">{item.nombre || 'Sin nombre'}</div>
-                              <div className="text-sm text-gray-500">{item.codigo || 'N/A'} - {item.tamaño || ''} - {item.color || ''}</div>
+                              <div className="text-sm text-gray-500">
+                                {item.codigo && `${item.codigo}`}
+                                {item.codigo && item.tamaño && ' - '}
+                                {item.tamaño && `${item.tamaño}`}
+                                {(item.codigo || item.tamaño) && item.color && ' - '}
+                                {item.color && `${item.color}`}
+                              </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">
                               {item.categoria?.replace('_', ' ') || 'Sin categoría'}
