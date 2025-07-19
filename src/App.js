@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Download, Search, Package, TrendingUp, AlertTriangle, ShoppingCart, DollarSign, Calendar } from 'lucide-react';
+import { Plus, Edit2, Trash2, Download, Search, Package, TrendingUp, AlertTriangle, ShoppingCart, DollarSign, Calendar, LogOut } from 'lucide-react';
 import './App.css';
 import { fetchInventory, addItem, updateItem, deleteItemFromDB, sellProduct, fetchSales, deleteSaleFromDB } from './supabaseService';
+import Login from './Login';
 
 
 function App() {
+  // Estados de autenticación
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true); // Nuevo estado
   
   const [inventory, setInventory] = useState([]);
   const [sales, setSales] = useState([]);
@@ -101,9 +106,9 @@ const getUniqueLocations = () => {
   try {
     const locations = [...new Set(
       inventory
-        .filter(item => item && typeof item === 'object')
+        .filter(item => item && typeof item === 'object' && item.ubicacion)
         .map(item => item.ubicacion)
-        .filter(location => location && typeof location === 'string' && location.trim() !== '')
+        .filter(location => typeof location === 'string' && location.trim() !== '')
     )];
     
     return [
@@ -121,8 +126,34 @@ const getUniqueLocations = () => {
     years.push({ value: i.toString(), label: i.toString() });
   }
 
+  // Verificar autenticación al cargar la aplicación
+  useEffect(() => {
+    const checkAuth = () => {
+      try {
+        const user = localStorage.getItem('currentUser');
+        if (user) {
+          const userData = JSON.parse(user);
+          setCurrentUser(userData);
+          setIsAuthenticated(true);
+        }
+      } catch (error) {
+        console.error('Error parsing user data:', error);
+        localStorage.removeItem('currentUser');
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+    
+    checkAuth();
+  }, []);
+
   useEffect(() => {
     let isMounted = true;
+    
+    // Solo cargar datos si está autenticado y no está en proceso de verificación de auth
+    if (!isAuthenticated || authLoading) {
+      return;
+    }
     
     const loadData = async () => {
       try {
@@ -161,7 +192,43 @@ const getUniqueLocations = () => {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [isAuthenticated, authLoading]);
+
+  // Función para manejar login exitoso
+  const handleLogin = (user) => {
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+    setAuthLoading(false);
+  };
+
+  // Función para manejar logout
+  const handleLogout = () => {
+    localStorage.removeItem('currentUser');
+    setCurrentUser(null);
+    setIsAuthenticated(false);
+    setAuthLoading(false);
+    // Limpiar datos sensibles
+    setInventory([]);
+    setSales([]);
+    setIsInitialized(false);
+  };
+
+  // Pantalla de carga inicial mientras se verifica la autenticación
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Verificando sesión...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Si no está autenticado, mostrar login
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />;
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -587,28 +654,47 @@ Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-900">Sistema de Inventario</h1>
-            <div className="flex space-x-2">
+            <div className="flex items-center gap-3">
+              <img 
+                src="/img/micama.jpg" 
+                alt="MiCama Logo" 
+                className="h-10 w-10 object-contain"
+              />
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Sistema de Inventario</h1>
+                <p className="text-gray-600">Bienvenido, {currentUser?.username}</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setCurrentView('inventory')}
+                  className={`px-4 py-2 rounded-lg ${currentView === 'inventory' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                >
+                  <Package className="w-4 h-4 inline mr-2" />
+                  Inventario
+                </button>
+                <button
+                  onClick={() => setCurrentView('sales')}
+                  className={`px-4 py-2 rounded-lg ${currentView === 'sales' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                >
+                  <ShoppingCart className="w-4 h-4 inline mr-2" />
+                  Ventas
+                </button>
+                <button
+                  onClick={() => setCurrentView('dashboard')}
+                  className={`px-4 py-2 rounded-lg ${currentView === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                >
+                  <TrendingUp className="w-4 h-4 inline mr-2" />
+                  Dashboard
+                </button>
+              </div>
               <button
-                onClick={() => setCurrentView('inventory')}
-                className={`px-4 py-2 rounded-lg ${currentView === 'inventory' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
+                onClick={handleLogout}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
               >
-                <Package className="w-4 h-4 inline mr-2" />
-                Inventario
-              </button>
-              <button
-                onClick={() => setCurrentView('sales')}
-                className={`px-4 py-2 rounded-lg ${currentView === 'sales' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-              >
-                <ShoppingCart className="w-4 h-4 inline mr-2" />
-                Ventas
-              </button>
-              <button
-                onClick={() => setCurrentView('dashboard')}
-                className={`px-4 py-2 rounded-lg ${currentView === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-              >
-                <TrendingUp className="w-4 h-4 inline mr-2" />
-                Dashboard
+                <LogOut className="w-4 h-4" />
+                Cerrar Sesión
               </button>
             </div>
           </div>
