@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit2, Trash2, Download, Search, Package, TrendingUp, AlertTriangle, ShoppingCart, DollarSign, Calendar, LogOut } from 'lucide-react';
+import { Package, Plus, Edit, Trash2, Search, Calendar, DollarSign, TrendingUp, AlertTriangle, User, Tag, Hash, CreditCard, BarChart3, Edit2, Download, ShoppingCart, LogOut, X, FileText, CheckCircle, XCircle } from 'lucide-react';
 import './App.css';
 import {
   fetchInventory,
@@ -13,7 +13,8 @@ import {
   addItem,
   sellProductWithTransfer,
   deleteItemFromDB,
-  deleteSaleFromDB
+  deleteSaleFromDB,
+  updateSale
 } from './supabaseService';
 import { supabase } from './supabaseClient';
 import Login from './Login';
@@ -71,6 +72,7 @@ function App() {
   const [reservingItem, setReservingItem] = useState(null);
   const [reservationFilter, setReservationFilter] = useState('all');
   const [reservationSort, setReservationSort] = useState('fecha'); // Nuevo estado para ordenamiento
+  const [salesSort, setSalesSort] = useState('todos'); // Nuevo estado para ordenamiento de ventas
   const [reservationData, setReservationData] = useState({
     cantidadReservada: '',
     valorReserva: 0,
@@ -89,10 +91,23 @@ function App() {
   const [selectedSize, setSelectedSize] = useState('all');
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
+  const [selectedDay, setSelectedDay] = useState('all');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [sellingItem, setSellingItem] = useState(null);
+  // Agregar estos nuevos estados:
+  const [isSaleDetailsModalOpen, setIsSaleDetailsModalOpen] = useState(false);
+  const [selectedSaleDetails, setSelectedSaleDetails] = useState(null);
+  const [isEditSaleModalOpen, setIsEditSaleModalOpen] = useState(false);
+  const [editingSale, setEditingSale] = useState(null);
+  const [editSaleData, setEditSaleData] = useState({
+    cantidadVendida: '',
+    precioVenta: '',
+    metodoPago: 'efectivo',
+    notas: '',
+    fechaVenta: ''
+  });
   const [formData, setFormData] = useState({
     nombre: '',
     categoria: 'Sábana',
@@ -176,6 +191,32 @@ function App() {
   for (let i = currentYear - 5; i <= currentYear + 2; i++) {
     years.push({ value: i.toString(), label: i.toString() });
   }
+
+  const getDaysInMonth = () => {
+    if (selectedMonth === 'all' || selectedYear === 'all') {
+      return [{ value: 'all', label: 'Todos los días' }];
+    }
+    
+    const year = parseInt(selectedYear);
+    const month = parseInt(selectedMonth);
+    const daysInMonth = new Date(year, month, 0).getDate();
+    
+    const days = [{ value: 'all', label: 'Todos los días' }];
+    
+    for (let day = 1; day <= daysInMonth; day++) {
+      days.push({
+        value: day.toString().padStart(2, '0'),
+        label: `Día ${day}`
+      });
+    }
+    
+    return days;
+  };
+
+  // Resetear día seleccionado cuando cambie el mes
+  useEffect(() => {
+    setSelectedDay('all');
+  }, [selectedMonth, selectedYear]);
 
   // useEffect optimizado para preloader
   useEffect(() => {
@@ -484,6 +525,79 @@ function App() {
         console.error('Error al eliminar la venta:', error);
         alert('Hubo un error al eliminar la venta. Por favor, inténtalo de nuevo.');
       }
+    }
+  };
+
+  const openSaleDetails = (sale) => {
+    setSelectedSaleDetails(sale);
+    setIsSaleDetailsModalOpen(true);
+  };
+
+  const closeSaleDetails = () => {
+    setSelectedSaleDetails(null);
+    setIsSaleDetailsModalOpen(false);
+  };
+
+  // Función para abrir el modal de edición de venta
+  const openEditSale = (sale) => {
+    setEditingSale(sale);
+    setEditSaleData({
+      cantidadVendida: sale.cantidad_vendida.toString(),
+      precioVenta: sale.precio_venta.toString(),
+      metodoPago: sale.metodo_pago,
+      notas: sale.notas || '',
+      fechaVenta: new Date(sale.fecha_venta).toISOString().split('T')[0]
+    });
+    setIsEditSaleModalOpen(true);
+  };
+
+  // Función para cerrar el modal de edición
+  const closeEditSale = () => {
+    setEditingSale(null);
+    setEditSaleData({
+      cantidadVendida: '',
+      precioVenta: '',
+      metodoPago: 'efectivo',
+      notas: '',
+      fechaVenta: ''
+    });
+    setIsEditSaleModalOpen(false);
+  };
+
+  // Función para manejar la actualización de la venta
+  const handleEditSale = async (e) => {
+    e.preventDefault();
+
+    if (!editingSale || !editSaleData.cantidadVendida || !editSaleData.precioVenta || !editSaleData.fechaVenta) {
+      alert('Por favor, completa todos los campos requeridos.');
+      return;
+    }
+
+    if (parseInt(editSaleData.cantidadVendida) <= 0 || parseFloat(editSaleData.precioVenta) <= 0) {
+      alert('La cantidad y el precio deben ser mayores a 0.');
+      return;
+    }
+
+    try {
+      const saleInfo = {
+        cantidadVendida: parseInt(editSaleData.cantidadVendida),
+        precioVenta: parseFloat(editSaleData.precioVenta),
+        metodoPago: editSaleData.metodoPago,
+        notas: editSaleData.notas,
+        fechaVenta: editSaleData.fechaVenta
+      };
+
+      await updateSale(editingSale.id, saleInfo);
+      
+      // Recargar las ventas
+      const salesData = await fetchSales();
+      setSales(salesData || []);
+      
+      alert('Venta actualizada exitosamente.');
+      closeEditSale();
+    } catch (error) {
+      console.error('Error al actualizar la venta:', error);
+      alert(`Error al actualizar la venta: ${error.message || 'Error desconocido'}`);
     }
   };
 
@@ -807,8 +921,13 @@ const filterSalesByDate = (sales) => {
     const saleDate = new Date(sale.fecha_venta);
     const saleYear = saleDate.getFullYear().toString();
     const saleMonth = (saleDate.getMonth() + 1).toString().padStart(2, '0');
+    const saleDay = saleDate.getDate().toString().padStart(2, '0');
     
-    return saleYear === selectedYear && saleMonth === selectedMonth;
+    const yearMatch = saleYear === selectedYear;
+    const monthMatch = saleMonth === selectedMonth;
+    const dayMatch = selectedDay === 'all' || saleDay === selectedDay;
+    
+    return yearMatch && monthMatch && dayMatch;
   });
 };
 
@@ -1042,64 +1161,118 @@ const MobileInventoryCard = ({ item, sellItem, editItem, deleteItem }) => (
 );
 
 // Componente para tarjetas de ventas en móvil
-const MobileSalesCard = ({ sale, deleteSale }) => (
-  <div className="mobile-card show-mobile">
-    <div className="mobile-card-header">
-      <div>
-        <div className="mobile-card-title">{sale.nombre || 'Sin nombre'}</div>
-        <div className="mobile-card-subtitle">
-          {new Date(sale.fecha_venta).toLocaleDateString('es-ES')} - {new Date(sale.fecha_venta).toLocaleTimeString('es-ES', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
-          })}
+const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
+  const extractClientFromNotes = (notes) => {
+    if (!notes) return 'Cliente no especificado';
+    const clientMatch = notes.match(/Cliente:\s*([^,\n]+)/);
+    return clientMatch ? clientMatch[1].trim() : 'Cliente no especificado';
+  };
+
+  return (
+    <div className="bg-white p-6 rounded-lg shadow mb-4 show-mobile">
+      {/* Header con icono y información principal */}
+      <div className="flex items-center mb-4">
+        <Package className="w-8 h-8 text-blue-600" />
+        <div className="ml-4 flex-1">
+          <p className="text-lg font-bold text-gray-900">{sale.nombre}</p>
+          <p className="text-sm text-gray-500">{new Date(sale.fecha_venta).toLocaleDateString()}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-xl font-bold text-green-600">CLP {sale.total_venta?.toLocaleString()}</p>
         </div>
       </div>
-      <div className="mobile-card-actions">
+
+      {/* Grid de información */}
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="flex items-center">
+          <Tag className="w-5 h-5 text-purple-600 mr-2" />
+          <div>
+            <p className="text-xs text-gray-500">Categoría</p>
+            <p className="text-sm font-medium text-gray-900">{sale.categoria}</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center">
+          <Package className="w-5 h-5 text-orange-600 mr-2" />
+          <div>
+            <p className="text-xs text-gray-500">Tamaño</p>
+            <p className="text-sm font-medium text-gray-900">{sale.tamaño}</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center">
+          <Hash className="w-5 h-5 text-blue-600 mr-2" />
+          <div>
+            <p className="text-xs text-gray-500">Cantidad</p>
+            <p className="text-sm font-medium text-gray-900">{sale.cantidad_vendida}</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center">
+          <DollarSign className="w-5 h-5 text-green-600 mr-2" />
+          <div>
+            <p className="text-xs text-gray-500">Precio Unit.</p>
+            <p className="text-sm font-medium text-gray-900">CLP {sale.precio_venta?.toLocaleString()}</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Información adicional */}
+      <div className="space-y-2 mb-4">
+        <div className="flex items-center">
+          <CreditCard className="w-5 h-5 text-indigo-600 mr-2" />
+          <div>
+            <p className="text-xs text-gray-500">Método de Pago</p>
+            <p className="text-sm font-medium text-gray-900">{sale.metodo_pago}</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center">
+          <User className="w-5 h-5 text-teal-600 mr-2" />
+          <div>
+            <p className="text-xs text-gray-500">Cliente</p>
+            <p className="text-sm font-medium text-gray-900">{extractClientFromNotes(sale.notas)}</p>
+          </div>
+        </div>
+        
+        {sale.notas && (
+          <div className="flex items-start">
+            <FileText className="w-5 h-5 text-gray-600 mr-2 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-xs text-gray-500">Notas</p>
+              <p className="text-sm text-gray-700 break-words">{sale.notas}</p>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Botones de acción */}
+      <div className="flex justify-end space-x-2 pt-4 border-t border-gray-200">
+        <button
+          onClick={() => onSaleClick(sale)}
+          className="flex items-center px-3 py-2 text-sm bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+        >
+          <Search className="w-4 h-4 mr-1" />
+          Ver
+        </button>
+        <button
+          onClick={() => openEditSale(sale)}
+          className="flex items-center px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+        >
+          <Edit className="w-4 h-4 mr-1" />
+          Editar
+        </button>
         <button
           onClick={() => deleteSale(sale.id)}
-          className="p-2 text-red-600 rounded"
-          title="Eliminar venta"
+          className="flex items-center px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
         >
-          <Trash2 className="w-4 h-4" />
+          <Trash2 className="w-4 h-4 mr-1" />
+          Eliminar
         </button>
       </div>
     </div>
-    <div className="mobile-card-content">
-      <div className="mobile-card-field">
-        <div className="mobile-card-label">Categoría</div>
-        <div className="mobile-card-value">{sale.categoria?.replace('_', ' ') || 'Sin categoría'}</div>
-      </div>
-      {sale.tamaño && (
-        <div className="mobile-card-field">
-          <div className="mobile-card-label">Tamaño</div>
-          <div className="mobile-card-value">{sale.tamaño}</div>
-        </div>
-      )}
-      <div className="mobile-card-field">
-        <div className="mobile-card-label">Cantidad</div>
-        <div className="mobile-card-value">{sale.cantidad_vendida}</div>
-      </div>
-      <div className="mobile-card-field">
-        <div className="mobile-card-label">Precio Unit.</div>
-        <div className="mobile-card-value">${sale.precio_venta}</div>
-      </div>
-      <div className="mobile-card-field">
-        <div className="mobile-card-label">Total</div>
-        <div className="mobile-card-value font-bold">${sale.total_venta}</div>
-      </div>
-      <div className="mobile-card-field">
-        <div className="mobile-card-label">Método Pago</div>
-        <div className="mobile-card-value capitalize">{sale.metodo_pago}</div>
-      </div>
-      {sale.notas && (
-        <div className="mobile-card-field">
-          <div className="mobile-card-label">Notas</div>
-          <div className="mobile-card-value">{sale.notas}</div>
-        </div>
-      )}
-    </div>
-  </div>
-);
+  );
+};
 
 
 
@@ -1187,11 +1360,70 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
     });
   };
 
+  // Función para extraer cliente de las notas
+  const extractClientFromNotes = (notas) => {
+    if (!notas) return null;
+    const match = notas.match(/Cliente: ([^,]+)/);
+    return match ? match[1].trim() : null;
+  };
+
+  // Función para ordenar ventas
+  const getSortedSales = (sales) => {
+    if (salesSort === 'cliente') {
+      return [...sales].sort((a, b) => {
+        const clienteA = extractClientFromNotes(a.notas) || 'Sin cliente';
+        const clienteB = extractClientFromNotes(b.notas) || 'Sin cliente';
+        return clienteA.localeCompare(clienteB);
+      });
+    } else if (salesSort === 'fecha') {
+      return [...sales].sort((a, b) => new Date(b.fecha_venta) - new Date(a.fecha_venta));
+    } else {
+      // Para 'todos' o cualquier otro valor, mostrar por fecha (más reciente primero)
+      return [...sales].sort((a, b) => new Date(b.fecha_venta) - new Date(a.fecha_venta));
+    }
+  };
+
   // Aplicar ordenamiento especial para almohadas
   if (selectedCategory === 'Almohada' || 
       (selectedCategory === 'all' && filteredInventory.some(item => item.categoria === 'Almohada'))) {
     filteredInventory = sortPillowsByDimensions(filteredInventory);
   }
+
+  const calculateDailyEarnings = () => {
+    const dailyEarnings = {};
+    
+    filteredSales.forEach(sale => {
+      const saleDate = new Date(sale.fecha_venta).toLocaleDateString('es-ES');
+      const earnings = parseFloat(sale.total_venta) || 0;
+      
+      if (dailyEarnings[saleDate]) {
+        dailyEarnings[saleDate] += earnings;
+      } else {
+        dailyEarnings[saleDate] = earnings;
+      }
+    });
+    
+    return dailyEarnings;
+  };
+
+  const getDailyEarningsStats = () => {
+    const dailyEarnings = calculateDailyEarnings();
+    const dates = Object.keys(dailyEarnings).sort((a, b) => new Date(a.split('/').reverse().join('-')) - new Date(b.split('/').reverse().join('-')));
+    
+    const totalEarnings = Object.values(dailyEarnings).reduce((sum, earnings) => sum + earnings, 0);
+    const averageDaily = dates.length > 0 ? totalEarnings / dates.length : 0;
+    const bestDay = dates.reduce((best, date) => 
+      dailyEarnings[date] > (dailyEarnings[best] || 0) ? date : best, dates[0]
+    );
+    
+    return {
+      dailyEarnings,
+      totalEarnings,
+      averageDaily: Math.round(averageDaily),
+      bestDay,
+      totalDays: dates.length
+    };
+  };
 
   const lowStockItems = sortPillowsByDimensions(
     dateFilteredInventory.filter(item => 
@@ -1386,8 +1618,19 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
               ))}
             </select>
             {selectedMonth !== 'all' && (
+              <select
+                value={selectedDay}
+                onChange={(e) => setSelectedDay(e.target.value)}
+                className="px-4 py-3 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300 hover:border-blue-300"
+              >
+                {getDaysInMonth().map(day => (
+                  <option key={day.value} value={day.value}>{day.label}</option>
+                ))}
+              </select>
+            )}
+            {selectedMonth !== 'all' && (
               <span className="text-sm gold-gradient text-white px-4 py-2 rounded-full font-medium shadow-md">
-                📊 {currentView === 'inventory' ? 'Inventario' : currentView === 'sales' ? 'Ventas' : 'Datos'} de {months.find(m => m.value === selectedMonth)?.label} {selectedYear}
+                📊 {currentView === 'inventory' ? 'Inventario' : currentView === 'sales' ? 'Ventas' : 'Datos'} de {selectedDay !== 'all' ? `día ${parseInt(selectedDay)} de ` : ''}{months.find(m => m.value === selectedMonth)?.label} {selectedYear}
               </span>
             )}
           </div>
@@ -1458,125 +1701,128 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
               {selectedMonth !== 'all' && ` (ingresados en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear})`}
             </div>
 
-            {/* Vista de tabla para desktop */}
-            <div className="bg-white rounded-lg shadow overflow-hidden hidden-mobile">
-              <div className="overflow-x-auto table-scroll table-responsive">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Producto</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Categoría</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stock</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Precio Venta</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredInventory.length === 0 ? (
-                      <tr>
-                        <td colSpan="6" className="px-6 py-8 text-center text-gray-500">
-                          {isLoading ? 'Cargando inventario...' : 'No hay productos que coincidan con los filtros'}
-                        </td>
-                      </tr>
-                    ) : (
-                      sortPillowsByDimensions(filteredInventory).map((item) => {
-                        if (!item || !item.id) return null;
+            {/* Vista de cards tipo dashboard para desktop */}
+            <div className="hidden-mobile">
+              {filteredInventory.length === 0 ? (
+                <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                  {isLoading ? 'Cargando inventario...' : 'No hay productos que coincidan con los filtros'}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  {sortPillowsByDimensions(filteredInventory).map((item) => {
+                    if (!item || !item.id) return null;
+                    
+                    return (
+                      <div key={item.id} className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
+                        <div className="flex items-center mb-4">
+                          <Package className="w-8 h-8 text-blue-600" />
+                          <div className="ml-4 flex-1 min-w-0">
+                            <p className="text-lg font-bold text-gray-900 truncate">{item.nombre}</p>
+                            <p className="text-sm text-gray-500">{item.categoria}</p>
+                          </div>
+                        </div>
                         
-                        return (
-                          <tr key={item.id} className="hover:bg-gray-50">
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm font-medium text-gray-900">{item.nombre || 'Sin nombre'}</div>
-                              <div className="text-sm text-gray-500">
-                                {item.codigo && `${item.codigo}`}
-                                {item.codigo && item.tamaño && ' - '}
-                                {item.tamaño && (
-                                  <span className={item.categoria === 'Almohada' ? 'font-medium text-blue-600' : ''}>
-                                    {item.categoria === 'Almohada' && '📏 '}{item.tamaño}
-                                  </span>
-                                )}
-                                {(item.codigo || item.tamaño) && item.color && ' - '}
-                                {item.color && `${item.color}`}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-500">Categoría:</span>
+                            <span className="text-sm font-medium text-gray-900 capitalize">
                               {item.categoria?.replace('_', ' ') || 'Sin categoría'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                <span className="text-sm text-gray-900">{item.cantidadstock || 0}</span>
-                                {(item.cantidadstock || 0) <= (item.stockminimo || 0) && (
-                                  <AlertTriangle className="w-4 h-4 text-red-500 ml-2" />
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            </span>
+                          </div>
+                          
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-500">Stock:</span>
+                            <div className="flex items-center">
+                              <span className="text-sm font-medium text-gray-900">{item.cantidadstock || 0}</span>
+                              {(item.cantidadstock || 0) <= (item.stockminimo || 0) && (
+                                <AlertTriangle className="w-4 h-4 text-red-500 ml-2" />
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-500">Precio:</span>
+                            <span className="text-lg font-bold text-green-600">
                               ${(item.precioventa || 0).toLocaleString()}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`px-2 py-1 text-xs rounded-full ${
-                                item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
-                                item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
-                                item.estado === 'vendido' ? 'bg-gray-100 text-gray-800' :
-                                'bg-red-100 text-red-800'
-                              }`}>
-                                {item.estado || 'Sin estado'}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => sellItem(item)}
-                                  disabled={(item.cantidadstock || 0) <= 0}
-                                  className={`${(item.cantidadstock || 0) > 0 ? 'text-green-600 hover:text-green-900' : 'text-gray-400 cursor-not-allowed'}`}
-                                  title="Vender"
-                                >
-                                  <DollarSign className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    setReservingItem(item);
-                                    setReservationData({
-                                      cantidadReservada: '',
-                                      valorReserva: 0,
-                                      cliente: '',
-                                      telefono: '',
-                                      notas: ''
-                                    });
-                                    setIsReservationModalOpen(true);
-                                  }}
-                                  className="text-purple-600 hover:text-purple-900"
-                                  title="Reservar"
-                                >
-                                  <Calendar className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => editItem(item)}
-                                  className="text-blue-600 hover:text-blue-900"
-                                  title="Editar"
-                                >
-                                  <Edit2 className="w-4 h-4" />
-                                </button>
-                                <button
-                                  onClick={() => deleteItem(item.id)}
-                                  className="text-red-600 hover:text-red-900"
-                                  title="Eliminar"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
+                            </span>
+                          </div>
+                          
+                          {item.tamaño && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm text-gray-500">Tamaño:</span>
+                              <span className="text-sm font-medium text-gray-900">{item.tamaño}</span>
+                            </div>
+                          )}
+                          
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-500">Estado:</span>
+                            <span className={`px-2 py-1 text-xs rounded-full ${
+                              item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
+                              item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
+                              item.estado === 'vendido' ? 'bg-gray-100 text-gray-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {item.estado || 'Sin estado'}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="flex justify-center gap-3">
+                            <button
+                              onClick={() => sellItem(item)}
+                              disabled={(item.cantidadstock || 0) <= 0}
+                              className={`p-2 rounded-lg ${
+                                (item.cantidadstock || 0) > 0 
+                                  ? 'text-green-600 hover:bg-green-50' 
+                                  : 'text-gray-400 cursor-not-allowed'
+                              }`}
+                              title="Vender"
+                            >
+                              <DollarSign className="w-5 h-5" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setReservingItem(item);
+                                setReservationData({
+                                  cantidadReservada: '',
+                                  valorReserva: 0,
+                                  cliente: '',
+                                  telefono: '',
+                                  notas: ''
+                                });
+                                setIsReservationModalOpen(true);
+                              }}
+                              className="p-2 rounded-lg text-purple-600 hover:bg-purple-50"
+                              title="Reservar"
+                            >
+                              <Calendar className="w-5 h-5" />
+                            </button>
+                            <button
+                              onClick={() => editItem(item)}
+                              className="p-2 rounded-lg text-blue-600 hover:bg-blue-50"
+                              title="Editar"
+                            >
+                              <Edit2 className="w-5 h-5" />
+                            </button>
+                            <button
+                              onClick={() => deleteItem(item.id)}
+                              className="p-2 rounded-lg text-red-600 hover:bg-red-50"
+                              title="Eliminar"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Vista de cards para móvil */}
-            <div className="show-mobile">
+            <div className="block md:hidden">
               {filteredInventory.length === 0 ? (
                 <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
                   {isLoading ? 'Cargando inventario...' : 'No hay productos que coincidan con los filtros'}
@@ -1601,9 +1847,27 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
 
         {currentView === 'sales' && (
           <>
+
+
+            <div className="mb-4 text-sm text-gray-600">
+              Mostrando {filteredSales.length} de {safeSales.length} ventas
+              {selectedMonth !== 'all' && (
+                ` (realizadas ${selectedDay !== 'all' ? `el día ${parseInt(selectedDay)} de ` : 'en '}${months.find(m => m.value === selectedMonth)?.label} ${selectedYear})`
+              )}
+            </div>
+            
             <div className="mb-6 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-900">Historial de Ventas</h2>
               <div className="flex gap-2">
+                <select
+                  value={salesSort}
+                  onChange={(e) => setSalesSort(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="todos">Mostrar Todos</option>
+                  <option value="fecha">Ordenar por Fecha</option>
+                  <option value="cliente">Ordenar por Cliente</option>
+                </select>
                 <button
                   onClick={exportSalesToTXT}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
@@ -1614,74 +1878,234 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
               </div>
             </div>
 
-            <div className="mb-4 text-sm text-gray-600">
-              Mostrando {filteredSales.length} de {safeSales.length} ventas
-              {selectedMonth !== 'all' && ` (realizadas en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear})`}
-            </div>
-            {/* Vista de tabla para desktop */}
-            <div className="bg-white rounded-lg shadow overflow-hidden hidden-mobile">
-              <div className="overflow-x-auto max-h-96 overflow-y-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Producto</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cantidad</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Precio Unit.</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Método Pago</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredSales.length === 0 ? (
-                      <tr>
-                        <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
-                          {selectedMonth !== 'all' 
-                            ? `No hay ventas registradas en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`
-                            : 'No hay ventas registradas'
-                          }
-                        </td>
-                      </tr>
-                    ) : (
-                      sortPillowsByDimensions(filteredSales).map((sale) => (
-                        <tr key={sale.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <div>
-                              <div className="font-medium">
-                                {new Date(sale.fecha_venta).toLocaleDateString('es-ES')}
-                              </div>
-                              <div className="text-xs text-gray-400">
-                                {new Date(sale.fecha_venta).toLocaleTimeString('es-ES', { 
-                                  hour: '2-digit', 
-                                  minute: '2-digit' 
-                                })}
+            {/* Sección de ganancias diarias - Desktop */}
+            {filteredSales.length > 0 && (() => {
+              const stats = getDailyEarningsStats();
+              const dailyEarnings = stats.dailyEarnings;
+              const sortedDates = Object.keys(dailyEarnings).sort((a, b) => 
+                new Date(b.split('/').reverse().join('-')) - new Date(a.split('/').reverse().join('-'))
+              );
+              
+              return (
+                <div className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl shadow-lg p-6 border border-green-200 hidden-mobile">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-green-600 rounded-lg">
+                      <DollarSign className="w-5 h-5 text-white" />
+                    </div>
+                    <h3 className="text-lg font-bold text-green-800">Ganancias por Día</h3>
+                  </div>
+                  
+                  {/* Estadísticas generales */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+                    <div className="bg-white p-6 rounded-lg shadow">
+                      <div className="flex items-center">
+                        <DollarSign className="w-8 h-8 text-green-600" />
+                        <div className="ml-4">
+                          <p className="text-sm font-medium text-gray-500">Total Ganancias</p>
+                          <p className="text-2xl font-bold text-gray-900">${stats.totalEarnings.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-lg shadow">
+                      <div className="flex items-center">
+                        <TrendingUp className="w-8 h-8 text-blue-600" />
+                        <div className="ml-4">
+                          <p className="text-sm font-medium text-gray-500">Promedio Diario</p>
+                          <p className="text-2xl font-bold text-gray-900">${stats.averageDaily.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-lg shadow">
+                      <div className="flex items-center">
+                        <Calendar className="w-8 h-8 text-purple-600" />
+                        <div className="ml-4">
+                          <p className="text-sm font-medium text-gray-500">Mejor Día</p>
+                          <p className="text-2xl font-bold text-gray-900">{stats.bestDay}</p>
+                          <p className="text-xs text-gray-400">${dailyEarnings[stats.bestDay]?.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="bg-white p-6 rounded-lg shadow">
+                      <div className="flex items-center">
+                        <BarChart3 className="w-8 h-8 text-orange-600" />
+                        <div className="ml-4">
+                          <p className="text-sm font-medium text-gray-500">Días con Ventas</p>
+                          <p className="text-2xl font-bold text-gray-900">{stats.totalDays}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Desglose Diario tipo Dashboard */}
+                  <div className="space-y-4">
+                    <h4 className="font-semibold text-gray-800 mb-4 flex items-center">
+                      <Calendar className="w-5 h-5 text-blue-600 mr-2" />
+                      Desglose Diario
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-h-96 overflow-y-auto">
+                      {sortedDates.map(date => {
+                        const earnings = dailyEarnings[date];
+                        const isTopDay = date === stats.bestDay;
+                        
+                        return (
+                          <div key={date} className="bg-white p-6 rounded-lg shadow">
+                            <div className="flex items-center">
+                              <Calendar className={`w-8 h-8 ${
+                                isTopDay ? 'text-purple-600' : 'text-blue-600'
+                              }`} />
+                              <div className="ml-4">
+                                <p className="text-sm font-medium text-gray-500">{date}</p>
+                                <p className={`text-2xl font-bold ${
+                                  isTopDay ? 'text-purple-600' : 'text-green-600'
+                                }`}>
+                                  ${earnings.toLocaleString()}
+                                </p>
+                                {isTopDay && (
+                                  <p className="text-xs text-purple-400">Mejor día</p>
+                                )}
                               </div>
                             </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm font-medium text-gray-900">{sale.nombre}</div>
-                            <div className="text-sm text-gray-500">{sale.categoria} - {sale.tamaño}</div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{sale.cantidad_vendida}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${sale.precio_venta?.toLocaleString()}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${sale.total_venta?.toLocaleString()}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 capitalize">{sale.metodo_pago}</td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <button
-                              onClick={() => deleteSale(sale.id)}
-                              className="text-red-600 hover:text-red-900"
-                              title="Eliminar venta"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-               </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Versión móvil de ganancias diarias */}
+            {filteredSales.length > 0 && (() => {
+              const stats = getDailyEarningsStats();
+              
+              return (
+                <div className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl shadow-lg p-4 border border-green-200 show-mobile">
+                  <div className="flex items-center gap-2 mb-3">
+                    <DollarSign className="w-5 h-5 text-green-600" />
+                    <h3 className="text-lg font-bold text-green-800">Ganancias</h3>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white rounded-lg p-3 text-center">
+                      <p className="text-xs text-gray-600">Total</p>
+                      <p className="text-lg font-bold text-green-600">${stats.totalEarnings.toLocaleString()}</p>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 text-center">
+                      <p className="text-xs text-gray-600">Promedio</p>
+                      <p className="text-lg font-bold text-blue-600">${stats.averageDaily.toLocaleString()}</p>
+                    </div>
+                  </div>
+                  
+                  {stats.bestDay && (
+                    <div className="mt-3 bg-white rounded-lg p-3 text-center">
+                      <p className="text-xs text-gray-600">Mejor día: {stats.bestDay}</p>
+                      <p className="text-lg font-bold text-purple-600">${stats.dailyEarnings[stats.bestDay]?.toLocaleString()}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+            
+            {/* Vista de tarjetas tipo dashboard para desktop */}
+            <div className="hidden md:block">
+              {filteredSales.length === 0 ? (
+                <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+                  {selectedMonth !== 'all' 
+                    ? `No hay ventas registradas en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`
+                    : 'No hay ventas registradas'
+                  }
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  {getSortedSales(filteredSales).map((sale) => {
+                    return (
+                      <div 
+                        key={sale.id} 
+                        className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow cursor-pointer"
+                        onClick={() => openSaleDetails(sale)}
+                      >
+                        {/* Header con icono y información principal */}
+                        <div className="flex items-center mb-4">
+                          <Package className="w-8 h-8 text-blue-600" />
+                          <div className="ml-4 flex-1 min-w-0">
+                            <p className="text-lg font-bold text-gray-900 truncate">{sale.nombre}</p>
+                            <p className="text-sm text-gray-500">
+                              {new Date(sale.fecha_venta).toLocaleDateString('es-ES')}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xl font-bold text-green-600">${sale.total_venta?.toLocaleString()}</p>
+                          </div>
+                        </div>
+
+                        {/* Información del producto */}
+                        <div className="space-y-3 mb-4">
+                          <div className="flex items-center">
+                            <Tag className="w-5 h-5 text-purple-600 mr-2" />
+                            <div className="flex-1">
+                              <p className="text-xs text-gray-500">Categoría • Tamaño</p>
+                              <p className="text-sm font-medium text-gray-900">{sale.categoria} • {sale.tamaño}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="flex items-center">
+                              <Hash className="w-4 h-4 text-blue-600 mr-2" />
+                              <div>
+                                <p className="text-xs text-gray-500">Cantidad</p>
+                                <p className="text-sm font-medium text-gray-900">{sale.cantidad_vendida}</p>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center">
+                              <DollarSign className="w-4 h-4 text-green-600 mr-2" />
+                              <div>
+                                <p className="text-xs text-gray-500">Precio Unit.</p>
+                                <p className="text-sm font-medium text-gray-900">CLP {sale.precio_venta?.toLocaleString()}</p>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center">
+                            <CreditCard className="w-4 h-4 text-indigo-600 mr-2" />
+                            <div className="flex-1">
+                              <p className="text-xs text-gray-500">Método de Pago</p>
+                              <p className="text-sm font-medium text-gray-900 capitalize">{sale.metodo_pago}</p>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center">
+                            <User className="w-4 h-4 text-teal-600 mr-2" />
+                            <div className="flex-1">
+                              <p className="text-xs text-gray-500">Cliente</p>
+                              <p className="text-sm font-medium text-gray-900 truncate">{(() => {
+                                if (!sale.notas) return 'Cliente no especificado';
+                                const clientMatch = sale.notas.match(/Cliente:\s*([^,\n]+)/);
+                                return clientMatch ? clientMatch[1].trim() : 'Cliente no especificado';
+                              })()}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Botones de acción */}
+                        <div className="flex justify-end space-x-2 pt-4 border-t border-gray-200">
+                          <button
+                            onClick={(e) => { 
+                              e.stopPropagation(); 
+                              deleteSale(sale.id); 
+                            }}
+                            className="flex items-center px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                            title="Eliminar venta"
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Vista de cards para móvil */}
@@ -1695,11 +2119,13 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                 </div>
               ) : (
                 <div>
-                  {sortPillowsByDimensions(filteredSales).map((sale) => (
+                  {getSortedSales(filteredSales).map((sale) => (
                     <MobileSalesCard 
                       key={sale.id} 
                       sale={sale} 
                       deleteSale={deleteSale}
+                      onSaleClick={openSaleDetails}
+                      openEditSale={openEditSale}
                     />
                   ))}
                 </div>
@@ -1765,39 +2191,53 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
 
         {currentView === 'reservations' && (
           <div className="space-y-6">
-            {/* Estadísticas de reservas */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            {/* Estadísticas de reservas - ya están en estilo dashboard */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">Total Reservas</h3>
-                <p className="text-3xl font-bold text-blue-600">{reservations.length}</p>
+                <div className="flex items-center">
+                  <Calendar className="w-8 h-8 text-blue-600" />
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Total Reservas</p>
+                    <p className="text-2xl font-bold text-gray-900">{reservations.length}</p>
+                  </div>
+                </div>
               </div>
               <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">Valor Total</h3>
-                <p className="text-2xl font-bold text-orange-600">
-                  CLP {reservations.reduce((sum, r) => sum + (parseFloat(r.valor_reserva) || 0), 0).toLocaleString()}
-                </p>
+                <div className="flex items-center">
+                  <DollarSign className="w-8 h-8 text-orange-600" />
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Valor Total</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      CLP {reservations.reduce((sum, r) => sum + (parseFloat(r.valor_reserva) || 0), 0).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
               </div>
               <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">Activas</h3>
-                <p className="text-3xl font-bold text-green-600">
-                  {reservations.filter(r => r.estado === 'activa').length}
-                </p>
+                <div className="flex items-center">
+                  <CheckCircle className="w-8 h-8 text-green-600" />
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Activas</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {reservations.filter(r => r.estado === 'activa').length}
+                    </p>
+                  </div>
+                </div>
               </div>
               <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">Confirmadas</h3>
-                <p className="text-3xl font-bold text-purple-600">
-                  {reservations.filter(r => r.estado === 'confirmada').length}
-                </p>
-              </div>
-              <div className="bg-white p-6 rounded-lg shadow">
-                <h3 className="text-lg font-semibold text-gray-800 mb-2">Canceladas</h3>
-                <p className="text-3xl font-bold text-red-600">
-                  {reservations.filter(r => r.estado === 'cancelada').length}
-                </p>
+                <div className="flex items-center">
+                  <XCircle className="w-8 h-8 text-red-600" />
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Canceladas</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {reservations.filter(r => r.estado === 'cancelada').length}
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Filtros y lista de reservas */}
+            {/* Filtros */}
             <div className="bg-white rounded-lg shadow p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold">Gestión de Reservas</h2>
@@ -1825,113 +2265,106 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
                 </div>
               </div>
 
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Producto</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cliente</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cantidad</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Valor</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Estado</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {sortPillowsByDimensions(
-                      reservations
-                        .filter(reservation => reservationFilter === 'all' || reservation.estado === reservationFilter)
-                    )
-                      .sort((a, b) => {
-                        switch (reservationSort) {
-                          case 'cliente':
-                            return a.cliente.localeCompare(b.cliente, 'es', { sensitivity: 'base' });
-                          case 'producto':
-                            const productA = inventory.find(item => item.id === a.inventory_id);
-                            const productB = inventory.find(item => item.id === b.inventory_id);
-                            return (productA?.nombre || '').localeCompare(productB?.nombre || '', 'es', { sensitivity: 'base' });
-                          case 'valor':
-                            return (b.valor_reserva || 0) - (a.valor_reserva || 0);
-                          case 'fecha':
-                          default:
-                            return new Date(b.fecha_reserva) - new Date(a.fecha_reserva);
-                        }
-                      })
-                      .map((reservation) => {
-                        const product = inventory.find(item => item.id === reservation.inventory_id);
-                        return (
-                          <tr key={reservation.id}>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">
-                                  {product?.nombre || 'Producto no encontrado'}
-                                </div>
-                                <div className="text-sm text-gray-500">
-                                  {product?.codigo}
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div>
-                                <div className="text-sm font-medium text-gray-900">{reservation.cliente}</div>
-                                <div className="text-sm text-gray-500">{reservation.telefono}</div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              {reservation.cantidad_reservada}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                              CLP {reservation.valor_reserva?.toLocaleString()}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                reservation.estado === 'activa' ? 'bg-green-100 text-green-800' :
-                                reservation.estado === 'confirmada' ? 'bg-purple-100 text-purple-800' :
-                                'bg-red-100 text-red-800'
-                              }`}>
-                                {reservation.estado}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                              {reservation.estado === 'activa' && (
-                                <>
-                                  <button
-                                    onClick={() => handleConfirmReservation(reservation.id)}
-                                    className="text-green-600 hover:text-green-900"
-                                  >
-                                    Confirmar
-                                  </button>
-                                  <button
-                                    onClick={() => handleCancelReservation(reservation.id)}
-                                    className="text-red-600 hover:text-red-900"
-                                  >
-                                    Cancelar
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteReservation(reservation.id)}
-                                    className="text-red-800 hover:text-red-900 font-semibold"
-                                    title="Eliminar reserva permanentemente"
-                                  >
-                                    Eliminar
-                                  </button>
-                                </>
-                              )}
-                              {reservation.estado !== 'activa' && (
-                                <button
-                                  onClick={() => handleDeleteReservation(reservation.id)}
-                                  className="text-red-800 hover:text-red-900 font-semibold"
-                                  title="Eliminar reserva permanentemente"
-                                >
-                                  Eliminar
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })
+              {/* Vista de cards tipo dashboard para reservas */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                {sortPillowsByDimensions(
+                  reservations
+                    .filter(reservation => reservationFilter === 'all' || reservation.estado === reservationFilter)
+                )
+                  .sort((a, b) => {
+                    switch (reservationSort) {
+                      case 'cliente':
+                        return a.cliente.localeCompare(b.cliente, 'es', { sensitivity: 'base' });
+                      case 'producto':
+                        const productA = inventory.find(item => item.id === a.inventory_id);
+                        const productB = inventory.find(item => item.id === b.inventory_id);
+                        return (productA?.nombre || '').localeCompare(productB?.nombre || '', 'es', { sensitivity: 'base' });
+                      case 'valor':
+                        return (b.valor_reserva || 0) - (a.valor_reserva || 0);
+                      case 'fecha':
+                      default:
+                        return new Date(b.fecha_reserva) - new Date(a.fecha_reserva);
                     }
-                  </tbody>
-                </table>
+                  })
+                  .map((reservation) => {
+                    const product = inventory.find(item => item.id === reservation.inventory_id);
+                    return (
+                      <div key={reservation.id} className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
+                        <div className="flex items-center mb-4">
+                          <Calendar className="w-8 h-8 text-blue-600" />
+                          <div className="ml-4 flex-1 min-w-0">
+                            <p className="text-lg font-bold text-gray-900 truncate">{product?.nombre || 'Producto no encontrado'}</p>
+                            <p className="text-sm text-gray-500">{product?.categoria || 'Sin categoría'}</p>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-500">Cliente:</span>
+                            <span className="text-sm font-medium text-gray-900 truncate">{reservation.cliente}</span>
+                          </div>
+                          
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-500">Cantidad:</span>
+                            <span className="text-sm font-medium text-gray-900">{reservation.cantidad_reservada}</span>
+                          </div>
+                          
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-500">Valor:</span>
+                            <span className="text-lg font-bold text-green-600">
+                              CLP {reservation.valor_reserva?.toLocaleString()}
+                            </span>
+                          </div>
+                          
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-500">Fecha:</span>
+                            <span className="text-sm font-medium text-gray-900">
+                              {new Date(reservation.fecha_reserva).toLocaleDateString()}
+                            </span>
+                          </div>
+                          
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm text-gray-500">Estado:</span>
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              reservation.estado === 'activa' ? 'bg-green-100 text-green-800' :
+                              reservation.estado === 'confirmada' ? 'bg-purple-100 text-purple-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {reservation.estado}
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="flex justify-center gap-2">
+                            {reservation.estado === 'activa' && (
+                              <>
+                                <button
+                                  onClick={() => handleConfirmReservation(reservation.id)}
+                                  className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
+                                >
+                                  Confirmar
+                                </button>
+                                <button
+                                  onClick={() => handleCancelReservation(reservation.id)}
+                                  className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                                >
+                                  Cancelar
+                                </button>
+                              </>
+                            )}
+                            <button
+                              onClick={() => handleDeleteReservation(reservation.id)}
+                              className="px-3 py-1 text-xs bg-red-800 text-white rounded hover:bg-red-900"
+                              title="Eliminar permanentemente"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             </div>
           </div>
@@ -2347,6 +2780,252 @@ const MobileSalesCard = ({ sale, deleteSale }) => (
               >
                 Confirmar Venta
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de detalles de venta */}
+      {isSaleDetailsModalOpen && selectedSaleDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 modal-overlay">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Detalles de la Venta</h3>
+              <button
+                onClick={closeSaleDetails}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                  <p className="text-sm text-gray-900">
+                    {new Date(selectedSaleDetails.fecha_venta).toLocaleDateString('es-ES')}
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Hora</label>
+                  <p className="text-sm text-gray-900">
+                    {new Date(selectedSaleDetails.fecha_venta).toLocaleTimeString('es-ES', { 
+                      hour: '2-digit', 
+                      minute: '2-digit' 
+                    })}
+                  </p>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Producto</label>
+                <p className="text-sm text-gray-900 font-medium">{selectedSaleDetails.nombre}</p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                  <p className="text-sm text-gray-900">{selectedSaleDetails.categoria}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tamaño</label>
+                  <p className="text-sm text-gray-900">{selectedSaleDetails.tamaño}</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cantidad</label>
+                  <p className="text-sm text-gray-900">{selectedSaleDetails.cantidad_vendida}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio Unitario</label>
+                  <p className="text-sm text-gray-900">${selectedSaleDetails.precio_venta?.toLocaleString()}</p>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Total</label>
+                <p className="text-lg font-bold text-gray-900">${selectedSaleDetails.total_venta?.toLocaleString()}</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Método de Pago</label>
+                <p className="text-sm text-gray-900 capitalize">{selectedSaleDetails.metodo_pago}</p>
+              </div>
+              
+              {selectedSaleDetails.notas && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
+                  <div className="bg-gray-50 rounded-md p-3">
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedSaleDetails.notas}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+              <button
+                onClick={closeSaleDetails}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                Cerrar
+              </button>
+              <button
+                onClick={() => {
+                  openEditSale(selectedSaleDetails);
+                  closeSaleDetails();
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              >
+                <Edit2 className="w-4 h-4" />
+                Editar
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm('¿Estás seguro de que deseas eliminar esta venta?')) {
+                    deleteSale(selectedSaleDetails.id);
+                    closeSaleDetails();
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 flex items-center gap-2"
+              >
+                <Trash2 className="w-4 h-4" />
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para editar venta */}
+      {isEditSaleModalOpen && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-11/12 max-w-2xl shadow-lg rounded-md bg-white">
+            <div className="mt-3">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-medium text-gray-900">Editar Venta</h3>
+                <button
+                  onClick={closeEditSale}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              {editingSale && (
+                <div className="mb-4 p-4 bg-gray-50 rounded-lg">
+                  <h4 className="font-medium text-gray-900 mb-2">Información del Producto</h4>
+                  <p className="text-sm text-gray-600">
+                    <strong>Producto:</strong> {editingSale.nombre}<br/>
+                    <strong>Categoría:</strong> {editingSale.categoria}<br/>
+                    <strong>Tamaño:</strong> {editingSale.tamaño}<br/>
+                    <strong>Color:</strong> {editingSale.color}<br/>
+                    <strong>Fecha de Venta:</strong> {new Date(editingSale.fecha_venta).toLocaleDateString('es-ES')}
+                  </p>
+                </div>
+              )}
+              
+              <form onSubmit={handleEditSale} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Cantidad Vendida *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={editSaleData.cantidadVendida}
+                      onChange={(e) => setEditSaleData({...editSaleData, cantidadVendida: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Precio de Venta *
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={editSaleData.precioVenta}
+                      onChange={(e) => setEditSaleData({...editSaleData, precioVenta: e.target.value})}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Fecha de Venta *
+                  </label>
+                  <input
+                    type="date"
+                    value={editSaleData.fechaVenta}
+                    onChange={(e) => setEditSaleData({...editSaleData, fechaVenta: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Método de Pago
+                  </label>
+                  <select
+                    value={editSaleData.metodoPago}
+                    onChange={(e) => setEditSaleData({...editSaleData, metodoPago: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {paymentMethods.map(method => (
+                      <option key={method.value} value={method.value}>
+                        {method.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Notas
+                  </label>
+                  <textarea
+                    value={editSaleData.notas}
+                    onChange={(e) => setEditSaleData({...editSaleData, notas: e.target.value})}
+                    rows="3"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Notas adicionales sobre la venta..."
+                  />
+                </div>
+                
+                {editSaleData.cantidadVendida && editSaleData.precioVenta && (
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <p className="text-sm text-blue-800">
+                      <strong>Total de la venta:</strong> ${(parseFloat(editSaleData.precioVenta) * parseInt(editSaleData.cantidadVendida)).toLocaleString()}
+                    </p>
+                  </div>
+                )}
+                
+                <div className="flex justify-end space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={closeEditSale}
+                    className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                  >
+                    Actualizar Venta
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         </div>

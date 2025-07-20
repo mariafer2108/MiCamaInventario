@@ -912,3 +912,38 @@ export const deleteReservation = async (reservationId) => {
     throw error;
   }
 };
+
+// Actualizar una venta existente
+export const updateSale = async (saleId, saleData) => {
+  try {
+    const updateData = {
+      cantidad_vendida: saleData.cantidadVendida,
+      precio_venta: saleData.precioVenta,
+      total_venta: saleData.precioVenta * saleData.cantidadVendida,
+      metodo_pago: saleData.metodoPago,
+      notas: saleData.notas || ''
+    };
+
+    // Manejar la fecha correctamente sin problemas de zona horaria
+    if (saleData.fechaVenta) {
+      // Asegurar que la fecha se mantenga como está, sin conversiones de zona horaria
+      updateData.fecha_venta = saleData.fechaVenta + 'T12:00:00.000Z';
+    }
+
+    const { data, error } = await supabase
+      .from('sales')
+      .update(updateData)
+      .eq('id', saleId)
+      .select();
+
+    if (error) {
+      console.error('Error updating sale:', error);
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in updateSale:', error);
+    throw error;
+  }
+};
