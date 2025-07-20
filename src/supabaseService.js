@@ -58,7 +58,8 @@ export const addItem = async (item) => {
         ubicacion: item.ubicacion,
         fechaingreso: item.fechaingreso,
         estado: item.estado,
-        descripcion: item.descripcion
+        descripcion: item.descripcion,
+        grupo_edad: item.grupo_edad
       }])
       .select();
 
@@ -91,7 +92,8 @@ export const updateItem = async (id, item) => {
         ubicacion: item.ubicacion,
         fechaingreso: item.fechaingreso,
         estado: item.estado,
-        descripcion: item.descripcion
+        descripcion: item.descripcion,
+        grupo_edad: item.grupo_edad
       })
       .eq('id', id)
       .select();
@@ -716,7 +718,7 @@ export const confirmReservation = async (reservationId, metodoPago = 'efectivo')
       throw new Error('La reserva no está activa');
     }
 
-    // Verificar que aún hay stock suficiente
+    // Verificar que el producto existe
     const { data: product, error: productError } = await supabase
       .from('inventory')
       .select('*')
@@ -725,9 +727,8 @@ export const confirmReservation = async (reservationId, metodoPago = 'efectivo')
 
     if (productError) throw productError;
 
-    if (product.cantidadstock < reservation.cantidad_reservada) {
-      throw new Error('Stock insuficiente para confirmar la reserva');
-    }
+    // ELIMINADA LA VALIDACIÓN DE STOCK INSUFICIENTE
+    // Ahora se permite confirmar reservas incluso si el stock es 0
 
     // Procesar la venta
     const saleData = {
@@ -737,27 +738,72 @@ export const confirmReservation = async (reservationId, metodoPago = 'efectivo')
       notas: `Venta confirmada desde reserva. Cliente: ${reservation.cliente}. ${reservation.notas || ''}`
     };
 
-    const saleResult = await sellProductWithTransfer(reservation.inventory_id, saleData);
+    // Calcular nuevo stock (puede ser negativo)
+    const newStock = product.cantidadstock - reservation.cantidad_reservada;
+    const newStatus = newStock <= 0 ? 'vendido' : product.estado;
+
+    console.log('📊 Nuevo stock calculado:', { newStock, newStatus });
+
+    // Actualizar stock en inventory (permitir stock negativo)
+    const { error: updateError } = await supabase
+      .from('inventory')
+      .update({ 
+        cantidadstock: newStock,
+        estado: newStatus
+      })
+      .eq('id', reservation.inventory_id);
+
+    if (updateError) throw updateError;
+
+    console.log('✅ Stock actualizado correctamente');
+
+    // Registrar la venta
+    const { data: saleRecord, error: saleError } = await supabase
+      .from('sales')
+      .insert([{
+        inventory_id: reservation.inventory_id,
+        nombre: product.nombre,
+        categoria: product.categoria,
+        tamaño: product.tamaño,
+        color: product.color,
+        cantidad_vendida: reservation.cantidad_reservada,
+        precio_venta: reservation.precio_unitario,
+        total_venta: reservation.precio_unitario * reservation.cantidad_reservada,
+        metodo_pago: metodoPago,
+        notas: saleData.notas
+      }])
+      .select();
+
+    if (saleError) throw saleError;
 
     // Actualizar estado de la reserva
-    const { error: updateError } = await supabase
+    const { error: updateReservationError } = await supabase
       .from('reservations')
       .update({ 
         estado: 'confirmada',
         fecha_confirmacion: new Date().toISOString(),
-        sale_id: saleResult.saleRecord[0].id
+        sale_id: saleRecord[0].id
       })
       .eq('id', reservationId);
 
-    if (updateError) throw updateError;
+    if (updateReservationError) throw updateReservationError;
 
     console.log('✅ Reserva confirmada y venta procesada');
 
+    let message = `✅ Reserva confirmada para ${reservation.cliente}. Venta procesada exitosamente.`;
+    
+    // Agregar alerta si el stock queda en negativo
+    if (newStock < 0) {
+      message += `\n⚠️ ALERTA: El producto "${product.nombre}" ahora tiene stock negativo (${newStock}).`;
+    } else if (newStock === 0) {
+      message += `\n⚠️ El producto "${product.nombre}" se ha quedado sin stock.`;
+    }
+
     return {
       success: true,
-      saleRecord: saleResult.saleRecord[0],
+      saleRecord: saleRecord[0],
       reservation: reservation,
-      message: `✅ Reserva confirmada para ${reservation.cliente}. Venta procesada exitosamente.`
+      message: message
     };
 
   } catch (error) {
@@ -771,6 +817,7 @@ export const cancelReservation = async (reservationId, motivo = '') => {
   try {
     console.log('❌ Cancelando reserva:', reservationId);
 
+    // Actualizar estado de la reserva
     const { data, error } = await supabase
       .from('reservations')
       .update({ 

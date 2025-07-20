@@ -16,8 +16,7 @@ import {
   deleteSaleFromDB,
   updateSale,
   updateRelatedSales,
-  updateRelatedReservations,
-  fixExistingSalesInventoryId
+  updateRelatedReservations
 } from './supabaseService';
 import { supabase } from './supabaseClient';
 import Login from './Login';
@@ -371,31 +370,7 @@ function App() {
     }
   };
 
-  // Agregar esta función después de las otras funciones de manejo
-  const fixExistingSales = async () => {
-    if (!window.confirm('¿Quieres reparar las ventas existentes para que se sincronicen con los cambios de inventario? Esto es necesario solo una vez.')) {
-      return;
-    }
-    
-    try {
-      setIsLoading(true);
-      const result = await fixExistingSalesInventoryId();
-      
-      if (result.updatedSales > 0) {
-        alert(`✅ Se repararon ${result.updatedSales} ventas existentes. Ahora los cambios en inventario se sincronizarán correctamente con las ventas.`);
-        // Recargar las ventas para ver los cambios
-        const salesData = await fetchSales();
-        setSales(salesData || []);
-      } else {
-        alert('✅ Todas las ventas ya están correctamente asociadas.');
-      }
-    } catch (error) {
-      console.error('Error reparando ventas:', error);
-      alert('Error al reparar las ventas existentes.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -742,64 +717,18 @@ function App() {
         notas: reservationInfo.notas
       });
       
-      // Descontar del stock local
-      const newStock = reservingItem.cantidadstock - reservationInfo.cantidadReservada;
+      // ELIMINADO: La lógica de transferencia automática de reposición
+      // Una reserva NO debe reponer stock automáticamente
+      // El stock se mantiene reservado hasta que se confirme o cancele la reserva
       
-      await updateItem(reservingItem.id, {
-        ...reservingItem,
-        cantidadstock: newStock,
-        estado: newStock === 0 ? 'reservado' : reservingItem.estado
-      });
-      
-      // **NUEVA FUNCIONALIDAD: Transferencia automática de reposición (igual que en ventas)**
-      let transferResult = null;
+      // Generar alerta si el stock disponible es bajo
+      const stockDisponible = reservingItem.cantidadstock - reservationInfo.cantidadReservada;
       let alertaStock = '';
       
-      if (reservingItem.ubicacion && reservingItem.ubicacion.toLowerCase().includes('local')) {
-        console.log('🚚 Iniciando transferencia de reposición desde bodega...');
-        
-        try {
-          const { transferFromWarehouse } = await import('./supabaseService');
-          
-          transferResult = await transferFromWarehouse(
-            reservingItem.nombre,
-            reservingItem.categoria,
-            reservingItem.tamaño,
-            reservingItem.color,
-            reservationInfo.cantidadReservada
-          );
-          
-          console.log('🚚 Resultado de transferencia de reposición:', transferResult);
-          
-          if (transferResult.success) {
-            alertaStock += `✅ Stock repuesto automáticamente desde bodega: ${transferResult.message}`;
-            
-            // **AGREGAR ESTA LÍNEA: Actualizar el producto en la base de datos con el nuevo stock**
-            await updateItem(reservingItem.id, {
-              ...reservingItem,
-              cantidadstock: transferResult.newLocalStock,
-              estado: 'disponible'
-            });
-          } else {
-            alertaStock += `⚠️ No se pudo reponer stock desde bodega: ${transferResult.message}`;
-          }
-          
-          // Si hay transferencia con bodega agotada
-          if (transferResult.bodegaAgotada) {
-            alertaStock += alertaStock ? '\n' : '';
-            alertaStock += `🚨 ALERTA: SE AGOTÓ LA BODEGA para "${reservingItem.nombre}".`;
-          }
-          
-        } catch (transferError) {
-          console.error('Error en transferencia de reposición:', transferError);
-          alertaStock += `⚠️ Error al intentar reponer stock: ${transferError.message}`;
-        }
-      }
-      
-      // Generar alertas de stock
-      if (newStock === 0) {
-        alertaStock += alertaStock ? '\n' : '';
-        alertaStock += `⚠️ ALERTA: El producto "${reservingItem.nombre}" en ${reservingItem.ubicacion} se ha quedado SIN STOCK.`;
+      if (stockDisponible === 0) {
+        alertaStock = `⚠️ ALERTA: El producto "${reservingItem.nombre}" en ${reservingItem.ubicacion} ya no tiene stock disponible para nuevas reservas.`;
+      } else if (stockDisponible < reservingItem.stockminimo) {
+        alertaStock = `⚠️ ALERTA: El producto "${reservingItem.nombre}" está por debajo del stock mínimo. Stock disponible: ${stockDisponible}`;
       }
       
       // Recargar datos
@@ -810,8 +739,8 @@ function App() {
       setInventory(inventoryData || []);
       setReservations(reservationsData || []);
       
-      // Mostrar mensaje de éxito con información de reposición
-      let successMessage = `✅ Reserva creada exitosamente. Stock actualizado: ${newStock} unidades restantes.`;
+      // Mostrar mensaje de éxito
+      let successMessage = `✅ Reserva creada exitosamente. Stock disponible restante: ${stockDisponible} unidades.`;
       if (alertaStock) {
         successMessage += `\n\n${alertaStock}`;
       }
@@ -1766,15 +1695,6 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
 </select>
               </div>
               <div className="flex gap-3 action-buttons">
-                <button
-                  onClick={fixExistingSales}
-                  disabled={isLoading}
-                  className="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-2 transition-all duration-300 hover-lift shadow-lg disabled:opacity-50"
-                  title="Reparar asociaciones de ventas existentes"
-                >
-                  <Edit className="w-5 h-5" />
-                  Reparar Ventas
-                </button>
                 <button
                   onClick={exportToTXT}
                   className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 transition-all duration-300 hover-lift shadow-lg"
