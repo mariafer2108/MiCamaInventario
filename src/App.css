@@ -1525,6 +1525,127 @@ input[type=number] {
   }
 }
 
+/* ===== ESTILOS ESPECÍFICOS PARA IPAD ===== */
+
+/* iPad en orientación vertical (768px x 1024px) */
+@media only screen 
+  and (min-device-width: 768px) 
+  and (max-device-width: 1024px) 
+  and (orientation: portrait) 
+  and (-webkit-min-device-pixel-ratio: 1) {
+  
+  /* Restaurar estilos desktop para la barra de navegación */
+  .gradient-bg .max-w-7xl {
+    padding: 1.5rem 2rem;
+  }
+  
+  .gradient-bg .flex {
+    flex-direction: row;
+    gap: 2rem;
+    align-items: center;
+    justify-content: space-between;
+  }
+  
+  /* Mostrar texto completo en iPad */
+  .gradient-bg .show-mobile {
+    display: block;
+  }
+  
+  .gradient-bg .show-mobile h1 {
+    display: block;
+  }
+  
+  /* Botones en fila horizontal */
+  .gradient-bg .flex.items-center.space-x-3 {
+    flex-direction: row;
+    gap: 1rem;
+    height: auto;
+    width: auto;
+  }
+  
+  .gradient-bg .flex.space-x-2 {
+    flex-direction: row;
+    gap: 0.75rem;
+    flex: none;
+    height: auto;
+  }
+  
+  /* Botones con tamaño desktop */
+  .gradient-bg button {
+    height: auto;
+    min-height: 44px;
+    max-height: none;
+    padding: 0.75rem 1.5rem;
+    font-size: 0.875rem;
+    width: auto;
+    min-width: auto;
+    max-width: none;
+  }
+  
+  .gradient-bg .flex.space-x-2 button {
+    flex: none;
+  }
+  
+  /* Mostrar texto en botones */
+  .gradient-bg button span {
+    display: inline-block;
+  }
+  
+  /* Iconos con tamaño normal */
+  .gradient-bg button .w-4,
+  .gradient-bg button svg {
+    width: 1rem;
+    height: 1rem;
+  }
+}
+
+/* iPad en orientación horizontal */
+@media only screen 
+  and (min-device-width: 768px) 
+  and (max-device-width: 1024px) 
+  and (orientation: landscape) 
+  and (-webkit-min-device-pixel-ratio: 1) {
+  
+  /* Usar estilos desktop completos */
+  .gradient-bg .max-w-7xl {
+    padding: 1.5rem 2rem;
+  }
+  
+  .gradient-bg .flex {
+    flex-direction: row;
+    gap: 2rem;
+    align-items: center;
+    justify-content: space-between;
+  }
+  
+  .gradient-bg .show-mobile {
+    display: block;
+  }
+  
+  .gradient-bg .show-mobile h1 {
+    display: block;
+  }
+}
+
+/* Ajuste general para tablets */
+@media (min-width: 768px) and (max-width: 1024px) {
+  /* Asegurar que los filtros no se apilen verticalmente */
+  .filter-controls {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  
+  .action-buttons {
+    flex-direction: row;
+    gap: 1rem;
+  }
+  
+  .action-buttons button {
+    width: auto;
+  }
+}
+
 /* ===== PRELOADER Y TRANSICIONES AVANZADAS ===== */
 
 /* Preloader principal */
