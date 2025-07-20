@@ -913,6 +913,50 @@ export const deleteReservation = async (reservationId) => {
   }
 };
 
+// Función para eliminar TODAS las reservas
+export const deleteAllReservations = async () => {
+  try {
+    console.log('🗑️ Eliminando TODAS las reservas...');
+
+    // Obtener todas las reservas primero para mostrar estadísticas
+    const { data: allReservations, error: fetchError } = await supabase
+      .from('reservations')
+      .select('*');
+
+    if (fetchError) throw fetchError;
+
+    const totalReservations = allReservations ? allReservations.length : 0;
+
+    if (totalReservations === 0) {
+      return {
+        success: true,
+        deletedCount: 0,
+        message: '✅ No hay reservas para eliminar'
+      };
+    }
+
+    // Eliminar todas las reservas
+    const { error: deleteError } = await supabase
+      .from('reservations')
+      .delete()
+      .neq('id', 0); // Esto elimina todos los registros
+
+    if (deleteError) throw deleteError;
+
+    console.log(`✅ ${totalReservations} reservas eliminadas permanentemente`);
+
+    return {
+      success: true,
+      deletedCount: totalReservations,
+      message: `✅ ${totalReservations} reservas eliminadas permanentemente`
+    };
+
+  } catch (error) {
+    console.error('❌ Error eliminando todas las reservas:', error);
+    throw error;
+  }
+};
+
 // Actualizar una venta existente
 export const updateSale = async (saleId, saleData) => {
   try {
@@ -944,6 +988,164 @@ export const updateSale = async (saleId, saleData) => {
     return data;
   } catch (error) {
     console.error('Error in updateSale:', error);
+    throw error;
+  }
+};
+
+// Función para actualizar ventas relacionadas cuando se edita un producto
+export const updateRelatedSales = async (inventoryId, updatedProductData) => {
+  try {
+    console.log('🔄 Actualizando ventas relacionadas para producto:', inventoryId);
+    
+    // Buscar ventas que coincidan con el inventory_id
+    const { data: relatedSales, error: fetchError } = await supabase
+      .from('sales')
+      .select('*')
+      .eq('inventory_id', inventoryId);
+
+    if (fetchError) throw fetchError;
+
+    if (relatedSales && relatedSales.length > 0) {
+      // Actualizar cada venta relacionada
+      for (const sale of relatedSales) {
+        const { error: updateError } = await supabase
+          .from('sales')
+          .update({
+            nombre: updatedProductData.nombre,
+            categoria: updatedProductData.categoria,
+            tamaño: updatedProductData.tamaño,
+            color: updatedProductData.color,
+            proveedor: updatedProductData.proveedor,
+            ubicacion: updatedProductData.ubicacion
+          })
+          .eq('id', sale.id);
+
+        if (updateError) {
+          console.error('Error actualizando venta:', updateError);
+        }
+      }
+      
+      console.log(`✅ ${relatedSales.length} ventas actualizadas`);
+      return { success: true, updatedSales: relatedSales.length };
+    }
+    
+    return { success: true, updatedSales: 0 };
+  } catch (error) {
+    console.error('❌ Error updating related sales:', error);
+    throw error;
+  }
+};
+
+// Función para actualizar reservas relacionadas cuando se edita un producto
+export const updateRelatedReservations = async (inventoryId, updatedProductData) => {
+  try {
+    console.log('🔄 Actualizando reservas relacionadas para producto:', inventoryId);
+    
+    // Buscar reservas que coincidan con el producto editado
+    const { data: relatedReservations, error: fetchError } = await supabase
+      .from('reservations')
+      .select('*')
+      .eq('inventory_id', inventoryId);
+
+    if (fetchError) throw fetchError;
+
+    if (relatedReservations && relatedReservations.length > 0) {
+      // Actualizar cada reserva relacionada
+      for (const reservation of relatedReservations) {
+        const { error: updateError } = await supabase
+          .from('reservations')
+          .update({
+            nombre: updatedProductData.nombre,
+            categoria: updatedProductData.categoria,
+            tamaño: updatedProductData.tamaño,
+            color: updatedProductData.color,
+            precio_unitario: updatedProductData.precioventa,
+            total_producto: reservation.cantidad_reservada * updatedProductData.precioventa
+          })
+          .eq('id', reservation.id);
+
+        if (updateError) {
+          console.error('Error actualizando reserva:', updateError);
+        }
+      }
+      
+      console.log(`✅ ${relatedReservations.length} reservas actualizadas`);
+      return { success: true, updatedReservations: relatedReservations.length };
+    }
+    
+    return { success: true, updatedReservations: 0 };
+  } catch (error) {
+    console.error('❌ Error updating related reservations:', error);
+    throw error;
+  }
+};
+
+// Función para actualizar ventas existentes sin inventory_id
+export const fixExistingSalesInventoryId = async () => {
+  try {
+    console.log('🔧 Reparando ventas existentes sin inventory_id...');
+    
+    // Obtener todas las ventas que no tienen inventory_id
+    const { data: salesWithoutInventoryId, error: fetchError } = await supabase
+      .from('sales')
+      .select('*')
+      .is('inventory_id', null);
+
+    if (fetchError) throw fetchError;
+
+    if (!salesWithoutInventoryId || salesWithoutInventoryId.length === 0) {
+      console.log('✅ No hay ventas sin inventory_id para reparar');
+      return { success: true, updatedSales: 0 };
+    }
+
+    console.log(`🔍 Encontradas ${salesWithoutInventoryId.length} ventas sin inventory_id`);
+
+    let updatedCount = 0;
+
+    // Para cada venta, buscar el producto correspondiente en inventario
+    for (const sale of salesWithoutInventoryId) {
+      try {
+        // Buscar producto que coincida exactamente
+        const { data: matchingProducts, error: searchError } = await supabase
+          .from('inventory')
+          .select('id')
+          .eq('nombre', sale.nombre)
+          .eq('categoria', sale.categoria)
+          .eq('tamaño', sale.tamaño)
+          .eq('color', sale.color)
+          .limit(1);
+
+        if (searchError) {
+          console.error('Error buscando producto para venta:', sale.id, searchError);
+          continue;
+        }
+
+        if (matchingProducts && matchingProducts.length > 0) {
+          // Actualizar la venta con el inventory_id encontrado
+          const { error: updateError } = await supabase
+            .from('sales')
+            .update({ inventory_id: matchingProducts[0].id })
+            .eq('id', sale.id);
+
+          if (updateError) {
+            console.error('Error actualizando venta:', sale.id, updateError);
+          } else {
+            updatedCount++;
+            console.log(`✅ Venta ${sale.id} asociada con producto ${matchingProducts[0].id}`);
+          }
+        } else {
+          console.log(`⚠️ No se encontró producto para venta ${sale.id}: ${sale.nombre}`);
+        }
+      } catch (error) {
+        console.error('Error procesando venta:', sale.id, error);
+      }
+    }
+
+    console.log(`✅ Reparación completada: ${updatedCount} ventas actualizadas`);
+    return { success: true, updatedSales: updatedCount };
+
+  } catch (error) {
+    console.error('❌ Error reparando ventas existentes:', error);
     throw error;
   }
 };

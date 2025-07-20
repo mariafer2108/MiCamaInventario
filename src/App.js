@@ -14,7 +14,10 @@ import {
   sellProductWithTransfer,
   deleteItemFromDB,
   deleteSaleFromDB,
-  updateSale
+  updateSale,
+  updateRelatedSales,
+  updateRelatedReservations,
+  fixExistingSalesInventoryId
 } from './supabaseService';
 import { supabase } from './supabaseClient';
 import Login from './Login';
@@ -89,6 +92,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedSize, setSelectedSize] = useState('all');
+  const [selectedAgeGroup, setSelectedAgeGroup] = useState('all'); // Nuevo estado
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
   const [selectedDay, setSelectedDay] = useState('all');
@@ -120,7 +124,8 @@ function App() {
     ubicacion: '',
     fechaIngreso: new Date().toISOString().split('T')[0],
     estado: 'disponible',
-    descripcion: ''
+    descripcion: '',
+    grupo_edad: 'Adulto'  // Nuevo campo
   });
   const [saleData, setSaleData] = useState({
     cantidadVendida: 1,
@@ -135,9 +140,16 @@ function App() {
     { value: 'Almohada', label: 'Almohadas' },
     { value: 'Frazada', label: 'Frazadas' },
     { value: 'Faldon', label: 'Faldón' },
-    { value: 'Cubre_colchon', label: 'Cubre colchón' },
+    { value: 'Cubre_colchon', label: 'Protector colchón' },
     { value: 'Plumones', label: 'Plumones' },
-    { value: 'Quilt', label: 'Quilts' },
+    { value: 'Quilt', label: 'Quilt' },
+  ];
+
+  // Nuevo campo para clasificación por edad
+  const ageGroups = [
+    { value: 'all', label: 'Todas las edades' },
+    { value: 'Adulto', label: 'Adulto' },
+    { value: 'Infantil', label: 'Infantil' },
   ];
 
   const sizes = [
@@ -359,6 +371,32 @@ function App() {
     }
   };
 
+  // Agregar esta función después de las otras funciones de manejo
+  const fixExistingSales = async () => {
+    if (!window.confirm('¿Quieres reparar las ventas existentes para que se sincronicen con los cambios de inventario? Esto es necesario solo una vez.')) {
+      return;
+    }
+    
+    try {
+      setIsLoading(true);
+      const result = await fixExistingSalesInventoryId();
+      
+      if (result.updatedSales > 0) {
+        alert(`✅ Se repararon ${result.updatedSales} ventas existentes. Ahora los cambios en inventario se sincronizarán correctamente con las ventas.`);
+        // Recargar las ventas para ver los cambios
+        const salesData = await fetchSales();
+        setSales(salesData || []);
+      } else {
+        alert('✅ Todas las ventas ya están correctamente asociadas.');
+      }
+    } catch (error) {
+      console.error('Error reparando ventas:', error);
+      alert('Error al reparar las ventas existentes.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -376,34 +414,69 @@ function App() {
     };
 
     const newItem = {
-      codigo: editingItem ? editingItem.codigo : generateCode(), // Mantener código existente al editar
-      nombre: formData.nombre,
-      categoria: formData.categoria,
-      tamaño: formData.tamaño,
-      color: formData.color,
-      material: formData.material || '',
-      proveedor: formData.proveedor,
-      cantidadstock: isNaN(parseInt(formData.cantidadStock)) ? 0 : parseInt(formData.cantidadStock),
-      stockminimo: isNaN(parseInt(formData.stockMinimo)) ? 0 : parseInt(formData.stockMinimo),
-      preciocompra: isNaN(parseFloat(formData.precioCompra)) ? 0 : parseFloat(formData.precioCompra),
-      precioventa: isNaN(parseFloat(formData.precioVenta)) ? 0 : parseFloat(formData.precioVenta),
-      ubicacion: formData.ubicacion,
-      fechaingreso: formData.fechaIngreso,
-      estado: formData.estado,
-      descripcion: formData.descripcion,
-    };
+        codigo: editingItem ? editingItem.codigo : generateCode(), // Mantener código existente al editar
+        nombre: formData.nombre,
+        categoria: formData.categoria,
+        tamaño: formData.tamaño,
+        color: formData.color,
+        material: formData.material || '',
+        proveedor: formData.proveedor,
+        cantidadstock: isNaN(parseInt(formData.cantidadStock)) ? 0 : parseInt(formData.cantidadStock),
+        stockminimo: isNaN(parseInt(formData.stockMinimo)) ? 0 : parseInt(formData.stockMinimo),
+        preciocompra: isNaN(parseFloat(formData.precioCompra)) ? 0 : parseFloat(formData.precioCompra),
+        precioventa: isNaN(parseFloat(formData.precioVenta)) ? 0 : parseFloat(formData.precioVenta),
+        ubicacion: formData.ubicacion,
+        fechaingreso: formData.fechaIngreso,
+        estado: formData.estado,
+        descripcion: formData.descripcion,
+        grupo_edad: formData.grupo_edad  // Nuevo campo
+
+      };
 
     try {
       if (editingItem) {
+        // Actualizar el producto en inventario
         await updateItem(editingItem.id, newItem);
-        alert('Artículo actualizado exitosamente.');
+        
+        // Sincronizar cambios en ventas y reservas relacionadas
+        try {
+          const [salesResult, reservationsResult] = await Promise.all([
+            updateRelatedSales(editingItem.id, newItem),
+            updateRelatedReservations(editingItem.id, newItem)
+          ]);
+          
+          let syncMessage = 'Artículo actualizado exitosamente.';
+          if (salesResult.updatedSales > 0 || reservationsResult.updatedReservations > 0) {
+            syncMessage += `\n\n🔄 Sincronización completada:`;
+            if (salesResult.updatedSales > 0) {
+              syncMessage += `\n✅ ${salesResult.updatedSales} venta(s) actualizada(s)`;
+            }
+            if (reservationsResult.updatedReservations > 0) {
+              syncMessage += `\n✅ ${reservationsResult.updatedReservations} reserva(s) actualizada(s)`;
+            }
+          }
+          
+          alert(syncMessage);
+        } catch (syncError) {
+          console.error('Error en sincronización:', syncError);
+          alert('Artículo actualizado, pero hubo un problema sincronizando ventas y reservas. Verifica los datos manualmente.');
+        }
       } else {
         await addItem(newItem);
         alert('Artículo agregado exitosamente.');
       }
 
-      const data = await fetchInventory();
-      setInventory(data);
+      // Recargar todos los datos para reflejar los cambios
+      const [inventoryData, salesData, reservationsData] = await Promise.all([
+        fetchInventory(),
+        fetchSales(),
+        fetchReservations()
+      ]);
+      
+      setInventory(inventoryData || []);
+      setSales(salesData || []);
+      setReservations(reservationsData || []);
+      
       resetForm();
       setIsModalOpen(false);
     } catch (error) {
@@ -485,7 +558,8 @@ function App() {
       ubicacion: '',
       fechaIngreso: new Date().toISOString().split('T')[0],
       estado: 'disponible',
-      descripcion: ''
+      descripcion: '',
+      grupo_edad: 'Adulto'  // Nuevo campo
     });
     setEditingItem(null);
   };
@@ -820,6 +894,8 @@ function App() {
     }
   };
 
+
+
   const resetReservationForm = () => {
     setReservationData({
       cantidadReservada: '',
@@ -878,7 +954,8 @@ function App() {
       ubicacion: item.ubicacion,
       fechaIngreso: item.fechaingreso,
       estado: item.estado,
-      descripcion: item.descripcion
+      descripcion: item.descripcion,
+      grupo_edad: item.grupo_edad || 'Adulto'  // Nuevo campo con valor por defecto
     });
     setEditingItem(item);
     setIsModalOpen(true);
@@ -1318,7 +1395,8 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
       const matchesCategory = selectedCategory === 'all' || item.categoria === selectedCategory;
       const matchesSize = selectedSize === 'all' || item.tamaño === selectedSize;
       const matchesLocation = selectedLocation === 'all' || item.ubicacion === selectedLocation;
-      return matchesSearch && matchesCategory && matchesSize && matchesLocation;
+      const matchesAgeGroup = selectedAgeGroup === 'all' || item.grupo_edad === selectedAgeGroup;
+      return matchesSearch && matchesCategory && matchesSize && matchesLocation && matchesAgeGroup;
     } catch (error) {
       console.error('Error filtering item:', item, error);
       return false;
@@ -1677,8 +1755,26 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
     <option key={location.value} value={location.value}>{location.label}</option>
   ))}
 </select>
+<select
+  value={selectedAgeGroup}
+  onChange={(e) => setSelectedAgeGroup(e.target.value)}
+  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+>
+  {ageGroups.map(group => (
+    <option key={group.value} value={group.value}>{group.label}</option>
+  ))}
+</select>
               </div>
               <div className="flex gap-3 action-buttons">
+                <button
+                  onClick={fixExistingSales}
+                  disabled={isLoading}
+                  className="px-6 py-3 bg-orange-600 text-white rounded-lg hover:bg-orange-700 flex items-center gap-2 transition-all duration-300 hover-lift shadow-lg disabled:opacity-50"
+                  title="Reparar asociaciones de ventas existentes"
+                >
+                  <Edit className="w-5 h-5" />
+                  Reparar Ventas
+                </button>
                 <button
                   onClick={exportToTXT}
                   className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 transition-all duration-300 hover-lift shadow-lg"
@@ -2255,7 +2351,7 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
                   <select
                     value={reservationSort}
                     onChange={(e) => setReservationSort(e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="fecha">Ordenar por Fecha</option>
                     <option value="cliente">Ordenar por Cliente</option>
@@ -2385,7 +2481,7 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
           <div className="bg-white rounded-lg w-full max-w-3xl p-6 overflow-y-auto max-h-[90vh]">
             <h2 className="text-xl font-bold mb-4">{editingItem ? 'Editar Artículo' : 'Nuevo Artículo'}</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1" htmlFor="nombre">Nombre</label>
                   <input
@@ -2551,6 +2647,18 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
                     {estados.map(estado => (
                       <option key={estado.value} value={estado.value}>{estado.label}</option>
                     ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1" htmlFor="grupo_edad">Grupo de Edad</label>
+                  <select
+                    id="grupo_edad"
+                    value={formData.grupo_edad}
+                    onChange={(e) => setFormData({ ...formData, grupo_edad: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Adulto">Adulto</option>
+                    <option value="Infantil">Infantil</option>
                   </select>
                 </div>
               </div>
