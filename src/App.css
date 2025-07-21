@@ -1527,122 +1527,125 @@ input[type=number] {
 
 /* ===== ESTILOS ESPECÍFICOS PARA IPAD ===== */
 
-/* iPad en orientación vertical (768px x 1024px) */
-@media only screen 
-  and (min-device-width: 768px) 
-  and (max-device-width: 1024px) 
-  and (orientation: portrait) 
-  and (-webkit-min-device-pixel-ratio: 1) {
-  
-  /* Restaurar estilos desktop para la barra de navegación */
+/* SOLUCIÓN DEFINITIVA: Forzar estilos desktop en iPad */
+@media screen and (min-width: 768px) and (max-width: 1366px) {
+  /* Anular TODOS los estilos móviles problemáticos */
   .gradient-bg .max-w-7xl {
-    padding: 1.5rem 2rem;
+    padding: 1.5rem 2rem !important;
   }
   
   .gradient-bg .flex {
-    flex-direction: row;
-    gap: 2rem;
-    align-items: center;
-    justify-content: space-between;
+    flex-direction: row !important;
+    gap: 2rem !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    height: auto !important;
   }
   
-  /* Mostrar texto completo en iPad */
+  /* Mostrar título completo */
   .gradient-bg .show-mobile {
-    display: block;
+    display: block !important;
   }
   
   .gradient-bg .show-mobile h1 {
-    display: block;
+    display: block !important;
+    font-size: 1.25rem !important;
   }
   
-  /* Botones en fila horizontal */
+  /* Forzar layout horizontal de botones */
   .gradient-bg .flex.items-center.space-x-3 {
-    flex-direction: row;
-    gap: 1rem;
-    height: auto;
-    width: auto;
+    flex-direction: row !important;
+    gap: 1rem !important;
+    height: auto !important;
+    width: auto !important;
+    align-items: center !important;
+    justify-content: space-between !important;
   }
   
   .gradient-bg .flex.space-x-2 {
-    flex-direction: row;
-    gap: 0.75rem;
-    flex: none;
-    height: auto;
+    flex-direction: row !important;
+    gap: 0.75rem !important;
+    flex: none !important;
+    height: auto !important;
+    width: auto !important;
+    align-items: center !important;
   }
   
-  /* Botones con tamaño desktop */
+  /* Botones con estilos desktop */
   .gradient-bg button {
-    height: auto;
-    min-height: 44px;
-    max-height: none;
-    padding: 0.75rem 1.5rem;
-    font-size: 0.875rem;
-    width: auto;
-    min-width: auto;
-    max-width: none;
-  }
-  
-  .gradient-bg .flex.space-x-2 button {
-    flex: none;
+    height: auto !important;
+    min-height: 44px !important;
+    max-height: none !important;
+    padding: 0.75rem 1.5rem !important;
+    font-size: 0.875rem !important;
+    width: auto !important;
+    min-width: auto !important;
+    max-width: none !important;
+    flex: none !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.5rem !important;
+    border-radius: 0.5rem !important;
+    font-weight: 600 !important;
+    white-space: nowrap !important;
   }
   
   /* Mostrar texto en botones */
   .gradient-bg button span {
-    display: inline-block;
+    display: inline-block !important;
+    white-space: nowrap !important;
   }
   
-  /* Iconos con tamaño normal */
+  /* Iconos normales */
   .gradient-bg button .w-4,
   .gradient-bg button svg {
-    width: 1rem;
-    height: 1rem;
-  }
-}
-
-/* iPad en orientación horizontal */
-@media only screen 
-  and (min-device-width: 768px) 
-  and (max-device-width: 1024px) 
-  and (orientation: landscape) 
-  and (-webkit-min-device-pixel-ratio: 1) {
-  
-  /* Usar estilos desktop completos */
-  .gradient-bg .max-w-7xl {
-    padding: 1.5rem 2rem;
+    width: 1rem !important;
+    height: 1rem !important;
+    flex-shrink: 0 !important;
   }
   
-  .gradient-bg .flex {
-    flex-direction: row;
-    gap: 2rem;
-    align-items: center;
-    justify-content: space-between;
+  /* Anular espaciado móvil */
+  .gradient-bg .space-x-2 > *:not(:last-child),
+  .gradient-bg .space-x-3 > *:not(:last-child) {
+    margin-right: 0 !important;
   }
   
-  .gradient-bg .show-mobile {
-    display: block;
-  }
-  
-  .gradient-bg .show-mobile h1 {
-    display: block;
-  }
-}
-
-/* Ajuste general para tablets */
-@media (min-width: 768px) and (max-width: 1024px) {
-  /* Asegurar que los filtros no se apilen verticalmente */
+  /* Filtros en fila */
   .filter-controls {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 1rem;
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    gap: 1rem !important;
+    align-items: center !important;
   }
   
   .action-buttons {
-    flex-direction: row;
-    gap: 1rem;
+    flex-direction: row !important;
+    gap: 1rem !important;
+    flex-wrap: wrap !important;
   }
   
   .action-buttons button {
-    width: auto;
+    width: auto !important;
+    min-width: 120px !important;
+  }
+}
+
+/* Específico para iPad Pro 11" - mayor espaciado */
+@media screen and (min-width: 834px) and (max-width: 1194px) {
+  .gradient-bg .max-w-7xl {
+    padding: 1.75rem 2.5rem !important;
+  }
+  
+  .gradient-bg .flex {
+    gap: 2.5rem !important;
+  }
+  
+  .gradient-bg button {
+    min-height: 46px !important;
+    padding: 0.875rem 1.75rem !important;
+    font-size: 0.9375rem !important;
   }
 }
 
