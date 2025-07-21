@@ -4,7 +4,7 @@ import { supabase } from './supabaseClient';
 
 // Lista de emails autorizados - MODIFICA ESTA LISTA
 const AUTHORIZED_EMAILS = [
-  'carolina29barriga@gmail.com',
+  'carolina28barriga@gmail.com',
   'navarromunoz.mariafer@gmail.com',
 ];
 
