@@ -1,5 +1,78 @@
 import { supabase } from './supabaseClient';
 
+// ==================== AUTHENTICATION FUNCTIONS ====================
+
+// Get current user
+export const getCurrentUser = async () => {
+  try {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (error) throw error;
+    return user;
+  } catch (error) {
+    console.error('Error getting current user:', error);
+    return null;
+  }
+};
+
+// Sign in user
+export const signIn = async (email, password) => {
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+    if (error) throw error;
+    return data.user;
+  } catch (error) {
+    console.error('Error signing in:', error);
+    throw error;
+  }
+};
+
+// Sign out user
+export const signOut = async () => {
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+    return true;
+  } catch (error) {
+    console.error('Error signing out:', error);
+    throw error;
+  }
+};
+
+// Add sale function
+export const addSale = async (saleData) => {
+  try {
+    // Obtener la fecha local actual
+    const now = new Date();
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    
+    const { data, error } = await supabase
+      .from('sales')
+      .insert([{
+        inventory_id: saleData.item_id,
+        cantidad_vendida: saleData.cantidad_vendida,
+        precio_venta: saleData.precio_venta,
+        total_venta: saleData.precio_venta * saleData.cantidad_vendida,
+        metodo_pago: saleData.metodo_pago,
+        notas: saleData.notas || '',
+        fecha_venta: localDate + 'T12:00:00.000Z' // Agregar fecha local con hora fija
+      }])
+      .select();
+
+    if (error) {
+      console.error('Error adding sale:', error);
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in addSale:', error);
+    throw error;
+  }
+};
+
 // Obtener todos los productos del inventario
 // Mejorar fetchInventory
 export const fetchInventory = async () => {
@@ -59,7 +132,7 @@ export const addItem = async (item) => {
         fechaingreso: item.fechaingreso,
         estado: item.estado,
         descripcion: item.descripcion,
-        grupo_edad: item.grupo_edad
+        grupo_edad: item.grupoedad
       }])
       .select();
 
@@ -93,7 +166,7 @@ export const updateItem = async (id, item) => {
         fechaingreso: item.fechaingreso,
         estado: item.estado,
         descripcion: item.descripcion,
-        grupo_edad: item.grupo_edad
+        grupo_edad: item.grupoedad
       })
       .eq('id', id)
       .select();
@@ -1193,6 +1266,60 @@ export const fixExistingSalesInventoryId = async () => {
 
   } catch (error) {
     console.error('❌ Error reparando ventas existentes:', error);
+    throw error;
+  }
+};
+
+// Actualización masiva por criterios
+export const updateItemsBulk = async (filters, updateData) => {
+  try {
+    let query = supabase.from('inventory').update(updateData);
+    
+    // Aplicar filtros
+    if (filters.categoria) {
+      query = query.eq('categoria', filters.categoria);
+    }
+    if (filters.ubicacion) {
+      query = query.eq('ubicacion', filters.ubicacion);
+    }
+    if (filters.grupo_edad) {
+      query = query.eq('grupo_edad', filters.grupo_edad);
+    }
+    if (filters.estado) {
+      query = query.eq('estado', filters.estado);
+    }
+    
+    const { data, error } = await query.select();
+    
+    if (error) {
+      console.error('Error updating items in bulk:', error);
+      throw error;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error in updateItemsBulk:', error);
+    throw error;
+  }
+};
+
+// Actualización masiva por IDs específicos
+export const updateMultipleItems = async (itemIds, updateData) => {
+  try {
+    const { data, error } = await supabase
+      .from('inventory')
+      .update(updateData)
+      .in('id', itemIds)
+      .select();
+    
+    if (error) {
+      console.error('Error updating multiple items:', error);
+      throw error;
+    }
+    
+    return data;
+  } catch (error) {
+    console.error('Error in updateMultipleItems:', error);
     throw error;
   }
 };

@@ -1,545 +1,477 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Plus, Edit, Trash2, Search, Calendar, DollarSign, TrendingUp, AlertTriangle, User, Tag, Hash, CreditCard, BarChart3, Edit2, Download, ShoppingCart, LogOut, X, FileText, CheckCircle, XCircle } from 'lucide-react';
-import './App.css';
 import {
+  Package,
+  Plus,
+  Search,
+  Edit2,
+  Trash2,
+  ShoppingCart,
+  Calendar,
+  DollarSign,
+  TrendingUp,
+  Eye,
+  X,
+  Download
+} from 'lucide-react';
+
+// Importar todas las funciones de supabaseService
+import {
+  getCurrentUser,
+  signIn,
+  signOut,
   fetchInventory,
   fetchSales,
-  fetchReservations,
-  createReservation,
-  confirmReservation,
-  cancelReservation,
-  deleteReservation,
-  updateItem,
   addItem,
-  sellProductWithTransfer,
+  updateItem,
   deleteItemFromDB,
-  deleteSaleFromDB,
+  addSale,
   updateSale,
-  updateRelatedSales,
-  updateRelatedReservations
+  deleteSaleFromDB
 } from './supabaseService';
-import { supabase } from './supabaseClient';
-import Login from './Login';
 
-// ===== COMPONENTES DE PRELOADER Y SKELETON =====
-
-// Componente Preloader
-const PreloaderComponent = ({ showPreloader }) => {
-  return (
-    <div className={`app-preloader ${!showPreloader ? 'fade-out' : ''}`}>
-      <div className="preloader-logo gpu-accelerated">
-        <Package className="w-8 h-8 text-blue-600" />
-      </div>
-      <div className="preloader-spinner"></div>
-      <div className="preloader-text">MiCama Inventory</div>
-      <div className="preloader-subtext">Cargando sistema...</div>
-    </div>
-  );
-};
-
-// Componente Skeleton
-const SkeletonLoader = () => {
-  return (
-    <div className="skeleton-container">
-      <div className="skeleton-header"></div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="skeleton-card"></div>
-        <div className="skeleton-card"></div>
-        <div className="skeleton-card"></div>
-        <div className="skeleton-card"></div>
-      </div>
-      <div className="skeleton-table"></div>
-    </div>
-  );
+// Función para obtener tamaños según categoría
+const getTamañosPorCategoria = (categoria) => {
+  const tamañosAlmohadas = [
+    '40x60 cm (Pequeña)',
+    '50x70 cm (Estándar)',
+    '50x90 cm (Grande)'
+  ];
+  
+  const tamaños = [
+    '1 Plaza', '1 1/2 Plaza', '2 Plaza', 'King', 'Super King'
+  ];
+  
+  if (categoria === 'Almohadas') {
+    return tamañosAlmohadas;
+  }
+  return tamaños;
 };
 
 function App() {
-  // Estados de autenticación optimizados
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(false);
-  const [authInitialized, setAuthInitialized] = useState(false);
-  const [appReady, setAppReady] = useState(false);
-  
-  // Estados para preloader y transiciones mejorados
-  const [showPreloader, setShowPreloader] = useState(true);
-  const [contentReady, setContentReady] = useState(false);
-  const [viewTransition, setViewTransition] = useState(false);
-  
-  const [inventory, setInventory] = useState([]);
-  const [sales, setSales] = useState([]);
-  // Estados para reservas
-  const [reservations, setReservations] = useState([]);
-  const [isReservationModalOpen, setIsReservationModalOpen] = useState(false);
-  const [reservingItem, setReservingItem] = useState(null);
-  const [reservationFilter, setReservationFilter] = useState('all');
-  const [reservationSort, setReservationSort] = useState('fecha'); // Nuevo estado para ordenamiento
-  const [salesSort, setSalesSort] = useState('todos'); // Nuevo estado para ordenamiento de ventas
-  const [reservationData, setReservationData] = useState({
-    cantidadReservada: '',
-    valorReserva: 0,
-    cliente: '',
-    telefono: '',
-    notas: ''
-  });
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [currentView, setCurrentView] = useState('inventory');
-  const [selectedLocation, setSelectedLocation] = useState('all');
-  
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedSize, setSelectedSize] = useState('all');
-  const [selectedAgeGroup, setSelectedAgeGroup] = useState('all'); // Nuevo estado
-  const [selectedMonth, setSelectedMonth] = useState('all');
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear().toString());
-  const [selectedDay, setSelectedDay] = useState('all');
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
-  const [sellingItem, setSellingItem] = useState(null);
-  // Agregar estos nuevos estados:
-  const [isSaleDetailsModalOpen, setIsSaleDetailsModalOpen] = useState(false);
-  const [selectedSaleDetails, setSelectedSaleDetails] = useState(null);
-  const [isEditSaleModalOpen, setIsEditSaleModalOpen] = useState(false);
-  const [editingSale, setEditingSale] = useState(null);
-  const [editSaleData, setEditSaleData] = useState({
-    cantidadVendida: '',
-    precioVenta: '',
-    metodoPago: 'efectivo',
-    notas: '',
-    fechaVenta: ''
-  });
-  const [formData, setFormData] = useState({
-    nombre: '',
-    categoria: 'Sábana',
-    tamaño: '1 plaza',
-    color: '',
-    proveedor: '',
-    cantidadStock: '',
-    stockMinimo: '',
-    precioVenta: '',
-    ubicacion: '',
-    fechaIngreso: new Date().toISOString().split('T')[0],
-    estado: 'disponible',
-    descripcion: '',
-    grupo_edad: 'Adulto'  // Nuevo campo
-  });
-  const [saleData, setSaleData] = useState({
-    cantidadVendida: 1,
-    precioVenta: '',
-    metodoPago: 'efectivo',
-    notas: ''
-  });
 
-  const categories = [
-    { value: 'all', label: 'Todas las categorías' },
-    { value: 'Sábana', label: 'Sábanas' },
-    { value: 'Almohada', label: 'Almohadas' },
-    { value: 'Frazada', label: 'Frazadas' },
-    { value: 'Faldon', label: 'Faldón' },
-    { value: 'Cubre_colchon', label: 'Protector colchón' },
-    { value: 'Plumones', label: 'Plumones' },
-    { value: 'Quilt', label: 'Quilt' },
+// Estados de autenticación y preloader
+
+const [user, setUser] = useState(null);
+
+const [message, setMessage] = useState({ type: '', text: '' });
+
+const [showPreloader, setShowPreloader] = useState(true);
+
+const [email, setEmail] = useState('');
+
+const [password, setPassword] = useState('');
+
+const [loginError, setLoginError] = useState('');
+
+const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+// Estados principales
+
+const [inventory, setInventory] = useState([]);
+
+const [sales, setSales] = useState([]);
+
+
+
+const [currentView, setCurrentView] = useState('inventory');
+
+const [isModalOpen, setIsModalOpen] = useState(false);
+
+const [editingItem, setEditingItem] = useState(null);
+
+const [searchTerm, setSearchTerm] = useState('');
+
+const [categoryFilter, setCategoryFilter] = useState('');
+
+const [ageGroupFilter, setAgeGroupFilter] = useState('');
+
+const [sizeFilter, setSizeFilter] = useState('');
+const [locationFilter, setLocationFilter] = useState('');
+const [sortBy] = useState('nombre'); // Solo lectura
+const [sortOrder] = useState('asc'); // Solo lectura
+
+
+
+const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
+
+const [sellingItem, setSellingItem] = useState(null);
+
+const [isSaleDetailsModalOpen, setIsSaleDetailsModalOpen] = useState(false);
+
+const [selectedSaleDetails, setSelectedSaleDetails] = useState(null);
+
+const [isEditSaleModalOpen, setIsEditSaleModalOpen] = useState(false);
+
+const [editingSale, setEditingSale] = useState(null);
+
+const [isInventoryDetailsModalOpen, setIsInventoryDetailsModalOpen] = useState(false);
+
+const [selectedInventoryDetails, setSelectedInventoryDetails] = useState(null);
+
+const [salesSearchTerm, setSalesSearchTerm] = useState('');
+
+const [salesCategoryFilter, setSalesCategoryFilter] = useState('');
+
+const [salesSortBy] = useState('fecha_venta');
+
+const [salesSortOrder] = useState('desc');
+
+const [salesDateFilter, setSalesDateFilter] = useState('');
+
+const [inventoryDateFilter, setInventoryDateFilter] = useState('');
+
+// Estados para formularios
+
+const [formData, setFormData] = useState({
+
+nombre: '',
+
+categoria: '',
+
+grupoedad: '',
+
+tamaño: '',
+
+color: '',
+
+cantidadstock: '',
+
+precioventa: '',
+
+ubicacion: '',
+
+notas: ''
+
+});
+
+const [saleData, setSaleData] = useState({
+
+cantidadVendida: 1,
+
+precioVenta: '',
+
+metodoPago: 'efectivo',
+
+notas: ''
+
+});
+
+const [editSaleData, setEditSaleData] = useState({
+
+cantidadVendida: '',
+
+precioVenta: '',
+
+fechaVenta: '',
+
+metodoPago: 'efectivo',
+
+notas: ''
+
+});
+
+// Datos de configuración
+
+  const categorias = [
+
+    'Sábanas', 'Almohadas', 'Frazadas', 'Faldón', 'Protector colchón', 'Plumones', 'Quilt'
+
   ];
 
-  // Nuevo campo para clasificación por edad
-  const ageGroups = [
-    { value: 'all', label: 'Todas las edades' },
-    { value: 'Adulto', label: 'Adulto' },
-    { value: 'Infantil', label: 'Infantil' },
-  ];
+const gruposEdad = [
+'Adulto', 'Infantil'
+];
 
-  const sizes = [
-    { value: 'all', label: 'Todos los tamaños' },
-    { value: '1 plaza', label: '1 plaza' },
-    { value: '1 1/2 plaza', label: '1 1/2 plaza' },
-    { value: '2 plazas', label: '2 plazas' },
-    { value: 'king', label: 'King' },
-    { value: 'super king', label: 'Super King' }
-  ];
+const tamaños = [
+'1 Plaza', '1 1/2 Plaza', '2 Plaza', 'King', 'Super King'
+];
 
-  // Tamaños específicos para almohadas con las medidas exactas
-  const pillowSizes = [
-    { value: 'all', label: 'Todos los tamaños' },
-    { value: '40x60 cm', label: '40x60 cm (Pequeña)' },
-    { value: '50x70 cm', label: '50x70 cm (Estándar)' },
-    { value: '50x90 cm', label: '50x90 cm (Grande)' }
-  ];
+// Tamaños específicos para almohadas
+const tamañosAlmohadas = [
+'40x60 cm (Pequeña)',
+'50x70 cm (Estándar)', 
+'50x90 cm (Grande)'
+];
 
-  const estados = [
-    { value: 'disponible', label: 'Disponible' },
-    { value: 'reservado', label: 'Reservado' },
-    { value: 'vendido', label: 'Vendido' },
-    { value: 'dañado', label: 'Dañado' }
-  ];
+const paymentMethods = [
 
-  const paymentMethods = [
-    { value: 'efectivo', label: 'Efectivo' },
-    { value: 'debito', label: 'Debito' },
-    { value: 'credito', label: 'Credito' },
-  ];
+{ value: 'efectivo', label: 'Efectivo' },
 
-  const months = [
-    { value: 'all', label: 'Todos los meses' },
-    { value: '01', label: 'Enero' },
-    { value: '02', label: 'Febrero' },
-    { value: '03', label: 'Marzo' },
-    { value: '04', label: 'Abril' },
-    { value: '05', label: 'Mayo' },
-    { value: '06', label: 'Junio' },
-    { value: '07', label: 'Julio' },
-    { value: '08', label: 'Agosto' },
-    { value: '09', label: 'Septiembre' },
-    { value: '10', label: 'Octubre' },
-    { value: '11', label: 'Noviembre' },
-    { value: '12', label: 'Diciembre' }
-  ];
+{ value: 'tarjeta_debito', label: 'Tarjeta de Débito' },
 
-  const currentYear = new Date().getFullYear();
-  const years = [];
-  for (let i = currentYear - 5; i <= currentYear + 2; i++) {
-    years.push({ value: i.toString(), label: i.toString() });
-  }
+{ value: 'tarjeta_credito', label: 'Tarjeta de Crédito' },
 
-  const getDaysInMonth = () => {
-    if (selectedMonth === 'all' || selectedYear === 'all') {
-      return [{ value: 'all', label: 'Todos los días' }];
-    }
-    
-    const year = parseInt(selectedYear);
-    const month = parseInt(selectedMonth);
-    const daysInMonth = new Date(year, month, 0).getDate();
-    
-    const days = [{ value: 'all', label: 'Todos los días' }];
-    
-    for (let day = 1; day <= daysInMonth; day++) {
-      days.push({
-        value: day.toString().padStart(2, '0'),
-        label: `Día ${day}`
-      });
-    }
-    
-    return days;
-  };
+{ value: 'transferencia', label: 'Transferencia' },
 
-  // Resetear día seleccionado cuando cambie el mes
-  useEffect(() => {
-    setSelectedDay('all');
-  }, [selectedMonth, selectedYear]);
+{ value: 'cheque', label: 'Cheque' },
 
-  // useEffect optimizado para preloader
-  useEffect(() => {
-    let mounted = true;
-    
-    const initializeApp = async () => {
-      try {
-        // Mostrar preloader mínimo 2 segundos para experiencia suave
-        const minLoadTime = new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Inicializar autenticación
-        setAuthLoading(true);
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (mounted) {
-          if (session?.user) {
-            setCurrentUser(session.user);
-            setIsAuthenticated(true);
-          } else {
-            setCurrentUser(null);
-            setIsAuthenticated(false);
-          }
-          setAuthLoading(false);
-          setAuthInitialized(true);
-          setAppReady(true);
-        }
-        
-        // Esperar tiempo mínimo
-        await minLoadTime;
-        
-        // Preparar contenido
-        if (mounted) {
-          setContentReady(true);
-          
-          // Fade out del preloader con delay
-          setTimeout(() => {
-            setShowPreloader(false);
-          }, 500);
-        }
-        
-      } catch (error) {
-        console.error('Error initializing app:', error);
-        if (mounted) {
-          setShowPreloader(false);
-          setContentReady(true);
-        }
-      }
-    };
-    
-    initializeApp();
-    
-    // Escuchar cambios de autenticación
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        if (mounted && event !== 'INITIAL_SESSION') {
-          if (session?.user) {
-            setCurrentUser(session.user);
-            setIsAuthenticated(true);
-          } else {
-            setCurrentUser(null);
-            setIsAuthenticated(false);
-            setInventory([]);
-            setSales([]);
-            setIsInitialized(false);
-          }
-          setAuthLoading(false);
-          setAppReady(true);
-        }
-      }
-    );
+{ value: 'otro', label: 'Otro' }
 
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
-    };
-  }, []);
-  
-  // useEffect para transiciones de vista
-  useEffect(() => {
-    if (contentReady) {
-      setViewTransition(true);
-      const timer = setTimeout(() => setViewTransition(false), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [currentView, contentReady]);
+];
 
-  useEffect(() => {
-    const loadData = async () => {
-      // Solo cargar datos si está autenticado, auth inicializado y no está cargando auth
-      if (!isAuthenticated || !authInitialized || authLoading || !appReady) {
-        setIsInitialized(false);
-        return;
-      }
-      
-      setIsLoading(true);
-      setError(null);
-      setIsInitialized(false);
-      
-      try {
-        const [inventoryData, salesData, reservationsData] = await Promise.all([
-          fetchInventory(),
-          fetchSales(),
-          fetchReservations()
-        ]);
-        
-        setInventory(inventoryData || []);
-        setSales(salesData || []);
-        setReservations(reservationsData || []);
-        setIsInitialized(true);
-      } catch (error) {
-        console.error('Error loading data:', error);
-        setError('Error al cargar los datos. Por favor, recarga la página.');
-        setIsInitialized(false);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+const ubicaciones = [
+  'Local', 'Bodega'
+];
 
+const dateFilters = [
+
+{ value: '', label: 'Todas las fechas' },
+
+{ value: 'today', label: 'Hoy' },
+
+{ value: 'yesterday', label: 'Ayer' },
+
+{ value: 'this_week', label: 'Esta semana' },
+
+{ value: 'last_week', label: 'Semana pasada' },
+
+{ value: 'this_month', label: 'Este mes' },
+
+{ value: 'last_month', label: 'Mes pasado' },
+
+{ value: 'this_year', label: 'Este año' }
+
+];
+
+// Efectos
+useEffect(() => {
+  checkUser();
+}, []);
+
+useEffect(() => {
+  if (user) {
+    // Cargar datos inmediatamente
     loadData();
-  }, [isAuthenticated, authInitialized, authLoading, appReady]);
+    
+    // Configurar actualización automática cada 30 segundos
+    const interval = setInterval(() => {
+      loadData();
+    }, 30000); // 30 segundos
+    
+    return () => clearInterval(interval);
+  }
+}, [user]);
 
-  // Función para manejar login exitoso
-  const handleLogin = (user) => {
-    setCurrentUser(user);
-    setIsAuthenticated(true);
-    setAuthLoading(false);
-  };
-
-  // Función para manejar logout
-  const handleLogout = async () => {
-    try {
-      await supabase.auth.signOut();
-      setCurrentUser(null);
-      setIsAuthenticated(false);
-      setInventory([]);
-      setSales([]);
-      setIsInitialized(false);
-    } catch (error) {
-      console.error('Error during logout:', error);
+// Agregar actualización cuando la ventana vuelve a tener foco
+useEffect(() => {
+  const handleFocus = () => {
+    if (user) {
+      loadData();
     }
   };
+  
+  window.addEventListener('focus', handleFocus);
+  return () => window.removeEventListener('focus', handleFocus);
+}, [user]);
 
+useEffect(() => {
 
+const timer = setTimeout(() => {
 
+setShowPreloader(false);
+
+}, 2000);
+
+return () => clearTimeout(timer);
+
+}, []);
+
+// Limpiar tamaño cuando cambie la categoría
+useEffect(() => {
+  if (formData.categoria && !editingItem) {
+    // Solo limpiar si no estamos editando un producto existente
+    const tamañosDisponibles = getTamañosPorCategoria(formData.categoria);
+    if (formData.tamaño && !tamañosDisponibles.includes(formData.tamaño)) {
+      setFormData(prev => ({ ...prev, tamaño: '' }));
+    }
+  }
+}, [formData.categoria, formData.tamaño, editingItem]);
+
+// Funciones de autenticación
+
+const checkUser = async () => {
+
+try {
+
+const currentUser = await getCurrentUser();
+
+setUser(currentUser);
+
+} catch (error) {
+
+console.error('Error checking user:', error);
+
+}
+
+};
+
+const handleLogin = async (e) => {
+
+e.preventDefault();
+
+setIsLoggingIn(true);
+
+setLoginError('');
+
+try {
+
+const user = await signIn(email, password);
+
+setUser(user);
+
+setEmail('');
+
+setPassword('');
+
+} catch (error) {
+
+setLoginError(error.message);
+
+} finally {
+
+setIsLoggingIn(false);
+
+}
+
+};
+
+const handleLogout = async () => {
+
+try {
+
+await signOut();
+
+setUser(null);
+
+setCurrentView('inventory');
+
+} catch (error) {
+
+console.error('Error signing out:', error);
+
+}
+
+};
+
+// Funciones de carga de datos
+
+const loadData = async () => {
+  console.log('🔄 Iniciando carga de datos...');
+  try {
+    const [inventoryData, salesData] = await Promise.all([
+      fetchInventory(),
+      fetchSales()
+    ]);
+    setInventory(inventoryData || []);
+    setSales(salesData || []);
+    console.log('✅ Datos actualizados:', {
+      inventario: inventoryData?.length || 0,
+      ventas: salesData?.length || 0
+    });
+  } catch (error) {
+    console.error('Error loading data:', error);
+    setMessage({ 
+      type: 'error', 
+      text: 'Error al cargar los datos. Intentando nuevamente...' 
+    });
+  }
+};
+  // Funciones de inventario
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    if (!formData.nombre) {
-      alert('Por favor, completa al menos el nombre del artículo.');
+    console.log('🔄 Intentando actualizar producto:', editingItem?.id, formData);
+    
+    // Limpiar mensajes anteriores
+    setMessage({ type: '', text: '' });
+    
+    // Validar campos requeridos
+    if (!formData.nombre || !formData.categoria || !formData.cantidadstock || !formData.precioventa) {
+      setMessage({ 
+        type: 'error', 
+        text: 'Por favor, completa todos los campos obligatorios (nombre, categoría, cantidad y precio)' 
+      });
       return;
     }
-
-    // Generar código automáticamente si no existe
-    const generateCode = () => {
-      const prefix = formData.categoria.substring(0, 3).toUpperCase();
-      const timestamp = Date.now().toString().slice(-6);
-      const random = Math.floor(Math.random() * 100).toString().padStart(2, '0');
-      return `${prefix}-${timestamp}-${random}`;
-    };
-
-    const newItem = {
-        codigo: editingItem ? editingItem.codigo : generateCode(), // Mantener código existente al editar
-        nombre: formData.nombre,
-        categoria: formData.categoria,
-        tamaño: formData.tamaño,
-        color: formData.color,
-        material: formData.material || '',
-        proveedor: formData.proveedor,
-        cantidadstock: isNaN(parseInt(formData.cantidadStock)) ? 0 : parseInt(formData.cantidadStock),
-        stockminimo: isNaN(parseInt(formData.stockMinimo)) ? 0 : parseInt(formData.stockMinimo),
-        preciocompra: isNaN(parseFloat(formData.precioCompra)) ? 0 : parseFloat(formData.precioCompra),
-        precioventa: isNaN(parseFloat(formData.precioVenta)) ? 0 : parseFloat(formData.precioVenta),
-        ubicacion: formData.ubicacion,
-        fechaingreso: formData.fechaIngreso,
-        estado: formData.estado,
-        descripcion: formData.descripcion,
-        grupo_edad: formData.grupo_edad  // Nuevo campo
-
-      };
-
+    
     try {
       if (editingItem) {
-        // Actualizar el producto en inventario
-        await updateItem(editingItem.id, newItem);
-        
-        // Sincronizar cambios en ventas y reservas relacionadas
-        try {
-          const [salesResult, reservationsResult] = await Promise.all([
-            updateRelatedSales(editingItem.id, newItem),
-            updateRelatedReservations(editingItem.id, newItem)
-          ]);
-          
-          let syncMessage = 'Artículo actualizado exitosamente.';
-          if (salesResult.updatedSales > 0 || reservationsResult.updatedReservations > 0) {
-            syncMessage += `\n\n🔄 Sincronización completada:`;
-            if (salesResult.updatedSales > 0) {
-              syncMessage += `\n✅ ${salesResult.updatedSales} venta(s) actualizada(s)`;
-            }
-            if (reservationsResult.updatedReservations > 0) {
-              syncMessage += `\n✅ ${reservationsResult.updatedReservations} reserva(s) actualizada(s)`;
-            }
-          }
-          
-          alert(syncMessage);
-        } catch (syncError) {
-          console.error('Error en sincronización:', syncError);
-          alert('Artículo actualizado, pero hubo un problema sincronizando ventas y reservas. Verifica los datos manualmente.');
-        }
+        await updateItem(editingItem.id, formData);
+        setMessage({ 
+          type: 'success', 
+          text: `Producto "${formData.nombre}" actualizado exitosamente` 
+        });
       } else {
-        await addItem(newItem);
-        alert('Artículo agregado exitosamente.');
+        await addItem(formData);
+        setMessage({ 
+          type: 'success', 
+          text: `Producto "${formData.nombre}" agregado exitosamente` 
+        });
       }
-
-      // Recargar todos los datos para reflejar los cambios
-      const [inventoryData, salesData, reservationsData] = await Promise.all([
-        fetchInventory(),
-        fetchSales(),
-        fetchReservations()
-      ]);
       
-      setInventory(inventoryData || []);
-      setSales(salesData || []);
-      setReservations(reservationsData || []);
+      await loadData();
       
-      resetForm();
-      setIsModalOpen(false);
+      // Cerrar modal después de un breve delay para mostrar el mensaje
+      setTimeout(() => {
+        setIsModalOpen(false);
+        resetForm();
+        setMessage({ type: '', text: '' });
+      }, 1500);
+      
     } catch (error) {
-      console.error('Error en handleSubmit:', error);
+      console.error('Error saving item:', error);
       
-      if (error.message?.includes('relation "inventory" does not exist')) {
-        alert('Error: La tabla "inventory" no existe en Supabase. Por favor, créala usando el SQL proporcionado.');
-      } else if (error.message?.includes('permission denied')) {
-        alert('Error de permisos: Verifica las políticas RLS de la tabla inventory.');
-      } else if (error.message?.includes('duplicate key')) {
-        alert('Error: Ya existe un artículo con ese código.');
-      } else {
-        alert(`Error al guardar el artículo: ${error.message || 'Error desconocido'}`);
+      // Mensaje de error específico basado en el tipo de error
+      let errorMessage = 'Error al guardar el producto';
+      
+      if (error.message && error.message.includes('grupoedad')) {
+        errorMessage = 'Error: La columna "grupoedad" no existe en la base de datos. Verifica la configuración de Supabase.';
+      } else if (error.message && error.message.includes('PGRST204')) {
+        errorMessage = 'Error de base de datos: Columna no encontrada. Verifica la estructura de la tabla.';
+      } else if (error.message) {
+        errorMessage = `Error: ${error.message}`;
       }
+      
+      setMessage({ 
+        type: 'error', 
+        text: errorMessage 
+      });
     }
   };
 
   const handleSale = async (e) => {
     e.preventDefault();
-
-    if (!sellingItem || saleData.cantidadVendida <= 0) {
-      alert('Por favor, verifica los datos de la venta.');
-      return;
-    }
-
-    if (saleData.cantidadVendida > sellingItem.cantidadstock) {
-      alert('No hay suficiente stock disponible.');
-      return;
-    }
-
     try {
       const saleInfo = {
-        cantidadVendida: parseInt(saleData.cantidadVendida),
-        precioVenta: saleData.precioVenta ? parseFloat(saleData.precioVenta) : sellingItem.precioventa,
-        metodoPago: saleData.metodoPago,
+        item_id: sellingItem.id,
+        cantidad_vendida: parseInt(saleData.cantidadVendida),
+        precio_venta: parseFloat(saleData.precioVenta || sellingItem.precioventa),
+        metodo_pago: saleData.metodoPago,
         notas: saleData.notas
       };
-
-      // Usar la nueva función con transferencia automática
-      const result = await sellProductWithTransfer(sellingItem.id, saleInfo);
       
-      // Recargar datos
-      const [inventoryData, salesData] = await Promise.all([
-        fetchInventory(),
-        fetchSales()
-      ]);
-      setInventory(inventoryData || []);
-      setSales(salesData || []);
-      
-      // Mostrar mensaje de éxito con información de transferencia
-      let message = 'Venta registrada exitosamente.';
-      if (result.transferResult) {
-        if (result.transferResult.success) {
-          message += `\n\n✅ ${result.transferResult.message}`;
-        } else {
-          message += `\n\n⚠️ ${result.transferResult.message}`;
-        }
-      }
-      
-      alert(message);
-      resetSaleForm();
+      await addSale(saleInfo);
+      await loadData();
       setIsSaleModalOpen(false);
+      resetSaleForm();
     } catch (error) {
-      console.error('Error en handleSale:', error);
-      alert(`Error al procesar la venta: ${error.message || 'Error desconocido'}`);
+      console.error('Error processing sale:', error);
     }
   };
 
   const resetForm = () => {
     setFormData({
       nombre: '',
-      categoria: 'Sábana',
-      tamaño: '1 plaza',
+      categoria: '',
+      grupoedad: '',
+      tamaño: '',
       color: '',
-      proveedor: '',
-      cantidadStock: '',
-      stockMinimo: '',
-      precioVenta: '',
+      cantidadstock: '',
+      precioventa: '',
       ubicacion: '',
-      fechaIngreso: new Date().toISOString().split('T')[0],
-      estado: 'disponible',
-      descripcion: '',
-      grupo_edad: 'Adulto'  // Nuevo campo
+      notas: ''
     });
     setEditingItem(null);
   };
-
-
 
   const resetSaleForm = () => {
     setSaleData({
@@ -552,28 +484,20 @@ function App() {
   };
 
   const deleteItem = async (id) => {
-    if (window.confirm('¿Estás seguro de que deseas eliminar este artículo?')) {
-      try {
-        await deleteItemFromDB(id);
-        const data = await fetchInventory();
-        setInventory(data);
-      } catch (error) {
-        console.error('Error al eliminar el artículo:', error);
-        alert('Hubo un error al eliminar el artículo. Por favor, inténtalo de nuevo.');
-      }
+    try {
+      await deleteItemFromDB(id);
+      await loadData();
+    } catch (error) {
+      console.error('Error deleting item:', error);
     }
   };
-  const deleteSale = async (saleId) => {
-    if (window.confirm('¿Estás seguro de que deseas eliminar esta venta?')) {
-      try {
-        await deleteSaleFromDB(saleId);
-        const salesData = await fetchSales();
-        setSales(salesData);
-        alert('Venta eliminada exitosamente.');
-      } catch (error) {
-        console.error('Error al eliminar la venta:', error);
-        alert('Hubo un error al eliminar la venta. Por favor, inténtalo de nuevo.');
-      }
+
+  const deleteSale = async (id) => {
+    try {
+      await deleteSaleFromDB(id);
+      await loadData();
+    } catch (error) {
+      console.error('Error deleting sale:', error);
     }
   };
 
@@ -587,314 +511,66 @@ function App() {
     setIsSaleDetailsModalOpen(false);
   };
 
-  // Función para abrir el modal de edición de venta
   const openEditSale = (sale) => {
     setEditingSale(sale);
     setEditSaleData({
-      cantidadVendida: sale.cantidad_vendida.toString(),
-      precioVenta: sale.precio_venta.toString(),
+      cantidadVendida: sale.cantidad_vendida,
+      precioVenta: sale.precio_venta,
+      fechaVenta: new Date(sale.fecha_venta).toISOString().split('T')[0],
       metodoPago: sale.metodo_pago,
-      notas: sale.notas || '',
-      fechaVenta: new Date(sale.fecha_venta).toISOString().split('T')[0]
+      notas: sale.notas || ''
     });
     setIsEditSaleModalOpen(true);
   };
 
-  // Función para cerrar el modal de edición
   const closeEditSale = () => {
     setEditingSale(null);
     setEditSaleData({
       cantidadVendida: '',
       precioVenta: '',
+      fechaVenta: '',
       metodoPago: 'efectivo',
-      notas: '',
-      fechaVenta: ''
+      notas: ''
     });
     setIsEditSaleModalOpen(false);
   };
 
-  // Función para manejar la actualización de la venta
   const handleEditSale = async (e) => {
     e.preventDefault();
-
-    if (!editingSale || !editSaleData.cantidadVendida || !editSaleData.precioVenta || !editSaleData.fechaVenta) {
-      alert('Por favor, completa todos los campos requeridos.');
-      return;
-    }
-
-    if (parseInt(editSaleData.cantidadVendida) <= 0 || parseFloat(editSaleData.precioVenta) <= 0) {
-      alert('La cantidad y el precio deben ser mayores a 0.');
-      return;
-    }
-
     try {
-      const saleInfo = {
-        cantidadVendida: parseInt(editSaleData.cantidadVendida),
-        precioVenta: parseFloat(editSaleData.precioVenta),
-        metodoPago: editSaleData.metodoPago,
-        notas: editSaleData.notas,
-        fechaVenta: editSaleData.fechaVenta
+      const updatedSaleData = {
+        cantidad_vendida: parseInt(editSaleData.cantidadVendida),
+        precio_venta: parseFloat(editSaleData.precioVenta),
+        fecha_venta: editSaleData.fechaVenta,
+        metodo_pago: editSaleData.metodoPago,
+        notas: editSaleData.notas
       };
-
-      await updateSale(editingSale.id, saleInfo);
       
-      // Recargar las ventas
-      const salesData = await fetchSales();
-      setSales(salesData || []);
-      
-      alert('Venta actualizada exitosamente.');
+      await updateSale(editingSale.id, updatedSaleData);
+      await loadData();
       closeEditSale();
     } catch (error) {
-      console.error('Error al actualizar la venta:', error);
-      alert(`Error al actualizar la venta: ${error.message || 'Error desconocido'}`);
+      console.error('Error updating sale:', error);
     }
   };
-
-  const handleReservation = async (e) => {
-    e.preventDefault();
-    
-    if (!reservingItem || reservationData.cantidadReservada <= 0) {
-      alert('Por favor, verifica los datos de la reserva.');
-      return;
-    }
-
-    try {
-      const reservationInfo = {
-        cantidadReservada: parseInt(reservationData.cantidadReservada),
-        valorReserva: reservationData.valorReserva ? parseFloat(reservationData.valorReserva) : 0,
-        cliente: reservationData.cliente,
-        telefono: reservationData.telefono,
-        notas: reservationData.notas
-      };
-
-      // Verificar si hay suficiente stock local
-      if (reservingItem.cantidadstock < reservationInfo.cantidadReservada) {
-        // Si es un producto local, intentar transferir desde bodega
-        if (reservingItem.ubicacion && reservingItem.ubicacion.toLowerCase().includes('local')) {
-          const cantidadNecesaria = reservationInfo.cantidadReservada - reservingItem.cantidadstock;
-          
-          try {
-            // Importar la función de transferencia
-            const { transferFromWarehouse } = await import('./supabaseService');
-            
-            const transferResult = await transferFromWarehouse(
-              reservingItem.nombre,
-              reservingItem.categoria,
-              reservingItem.tamaño,
-              reservingItem.color,
-              cantidadNecesaria
-            );
-            
-            if (transferResult.success) {
-              alert(`✅ Transferencia completada: ${transferResult.message}`);
-              // Actualizar el stock del item en memoria
-              reservingItem.cantidadstock = transferResult.newLocalStock;
-            } else {
-              alert(`⚠️ ${transferResult.message}`);
-              if (reservingItem.cantidadstock < reservationInfo.cantidadReservada) {
-                alert(`❌ No se puede completar la reserva. Stock insuficiente incluso después de intentar transferir desde bodega.`);
-                return;
-              }
-            }
-          } catch (transferError) {
-            console.error('Error en transferencia:', transferError);
-            alert(`❌ Error al transferir desde bodega: ${transferError.message}`);
-            return;
-          }
-        } else {
-          alert(`❌ Stock insuficiente. Disponible: ${reservingItem.cantidadstock}, Solicitado: ${reservationInfo.cantidadReservada}`);
-          return;
-        }
-      }
-
-      // Crear la reserva
-      await createReservation({
-        inventoryId: reservingItem.id,
-        cantidadReservada: reservationInfo.cantidadReservada,
-        valorReserva: reservationInfo.valorReserva,
-        cliente: reservationInfo.cliente,
-        telefono: reservationInfo.telefono,
-        notas: reservationInfo.notas
-      });
-      
-      // ELIMINADO: La lógica de transferencia automática de reposición
-      // Una reserva NO debe reponer stock automáticamente
-      // El stock se mantiene reservado hasta que se confirme o cancele la reserva
-      
-      // Generar alerta si el stock disponible es bajo
-      const stockDisponible = reservingItem.cantidadstock - reservationInfo.cantidadReservada;
-      let alertaStock = '';
-      
-      if (stockDisponible === 0) {
-        alertaStock = `⚠️ ALERTA: El producto "${reservingItem.nombre}" en ${reservingItem.ubicacion} ya no tiene stock disponible para nuevas reservas.`;
-      } else if (stockDisponible < reservingItem.stockminimo) {
-        alertaStock = `⚠️ ALERTA: El producto "${reservingItem.nombre}" está por debajo del stock mínimo. Stock disponible: ${stockDisponible}`;
-      }
-      
-      // Recargar datos
-      const [inventoryData, reservationsData] = await Promise.all([
-        fetchInventory(),
-        fetchReservations()
-      ]);
-      setInventory(inventoryData || []);
-      setReservations(reservationsData || []);
-      
-      // Mostrar mensaje de éxito
-      let successMessage = `✅ Reserva creada exitosamente. Stock disponible restante: ${stockDisponible} unidades.`;
-      if (alertaStock) {
-        successMessage += `\n\n${alertaStock}`;
-      }
-      
-      alert(successMessage);
-      resetReservationForm();
-      setIsReservationModalOpen(false);
-    } catch (error) {
-      console.error('Error creating reservation:', error);
-      alert(`Error al crear la reserva: ${error.message || 'Error desconocido'}`);
-    }
-  };
-
-  const handleConfirmReservation = async (reservationId) => {
-    if (!window.confirm('¿Estás seguro de que quieres confirmar esta reserva y convertirla en venta?')) {
-      return;
-    }
-
-    try {
-      await confirmReservation(reservationId);
-      
-      // Recargar datos
-      const [inventoryData, reservationsData, salesData] = await Promise.all([
-        fetchInventory(),
-        fetchReservations(),
-        fetchSales()
-      ]);
-      setInventory(inventoryData || []);
-      setReservations(reservationsData || []);
-      setSales(salesData || []);
-      
-      alert('Reserva confirmada y convertida en venta exitosamente.');
-    } catch (error) {
-      console.error('Error confirming reservation:', error);
-      alert(`Error al confirmar la reserva: ${error.message || 'Error desconocido'}`);
-    }
-  };
-
-  const handleCancelReservation = async (reservationId) => {
-    const reason = prompt('¿Por qué motivo cancelas esta reserva?');
-    if (!reason) return;
-
-    try {
-      await cancelReservation(reservationId, reason);
-      
-      // Recargar datos
-      const [inventoryData, reservationsData] = await Promise.all([
-        fetchInventory(),
-        fetchReservations()
-      ]);
-      setInventory(inventoryData || []);
-      setReservations(reservationsData || []);
-      
-      alert('Reserva cancelada exitosamente.');
-    } catch (error) {
-      console.error('Error canceling reservation:', error);
-      alert(`Error al cancelar la reserva: ${error.message || 'Error desconocido'}`);
-    }
-  };
-
-  const handleDeleteReservation = async (reservationId) => {
-    if (!window.confirm('¿Estás seguro de que quieres eliminar esta reserva permanentemente? Esta acción no se puede deshacer.')) {
-      return;
-    }
-
-    try {
-      await deleteReservation(reservationId);
-      alert('Reserva eliminada exitosamente');
-      
-      // Recargar datos
-      const [inventoryData, reservationsData] = await Promise.all([
-        fetchInventory(),
-        fetchReservations()
-      ]);
-      setInventory(inventoryData || []);
-      setReservations(reservationsData || []);
-    } catch (error) {
-      console.error('Error al eliminar la reserva:', error);
-      alert('Error al eliminar la reserva: ' + error.message);
-    }
-  };
-
-
-
-  const resetReservationForm = () => {
-    setReservationData({
-      cantidadReservada: '',
-      valorReserva: 0,
-      cliente: '',
-      telefono: '',
-      notas: ''
-    });
-    setReservingItem(null);
-  };
-
-  // Función para calcular valor de reserva automáticamente
-  const calculateReservationValue = (cantidad, precioProducto) => {
-    // Convertir a números para asegurar cálculo correcto
-    const cantidadNum = parseInt(cantidad) || 0;
-    const precioNum = parseFloat(precioProducto) || 0;
-    
-    // Valor líquido completo (100% del valor total)
-    const valorTotal = cantidadNum * precioNum;
-    return valorTotal.toFixed(2);
-  };
-
-  // Función para manejar cambio en cantidad reservada
-  const handleCantidadReservadaChange = (cantidad) => {
-    // Si la cantidad está vacía, mantener el campo vacío
-    if (cantidad === '' || cantidad === null || cantidad === undefined) {
-      setReservationData({
-        ...reservationData,
-        cantidadReservada: '',
-        valorReserva: 0
-      });
-      return;
-    }
-    
-    const valorCalculado = calculateReservationValue(cantidad, parseFloat(reservingItem.precioventa || 0));
-    setReservationData({
-      ...reservationData,
-      cantidadReservada: cantidad,
-      valorReserva: valorCalculado
-    });
-  };
-
-
-
 
   const editItem = (item) => {
     setFormData({
-      nombre: item.nombre,
-      categoria: item.categoria,
-      tamaño: item.tamaño,
-      color: item.color,
-      proveedor: item.proveedor,
-      cantidadStock: item.cantidadstock.toString(),
-      stockMinimo: item.stockminimo.toString(),
-      precioVenta: item.precioventa === 0 ? '' : item.precioventa,
-      ubicacion: item.ubicacion,
-      fechaIngreso: item.fechaingreso,
-      estado: item.estado,
-      descripcion: item.descripcion,
-      grupo_edad: item.grupo_edad || 'Adulto'  // Nuevo campo con valor por defecto
+      nombre: item.nombre || '',
+      categoria: item.categoria || '',
+      grupoedad: item.grupo_edad || '',
+      tamaño: item.tamaño || '',
+      color: item.color || '',
+      cantidadstock: item.cantidadstock || '',
+      precioventa: item.precioventa || '',
+      ubicacion: item.ubicacion || '',
+      notas: item.notas || ''
     });
     setEditingItem(item);
     setIsModalOpen(true);
   };
 
   const sellItem = (item) => {
-    if (item.cantidadstock <= 0) {
-      alert('No hay stock disponible para este producto.');
-      return;
-    }
     setSellingItem(item);
     setSaleData({
       cantidadVendida: 1,
@@ -905,583 +581,523 @@ function App() {
     setIsSaleModalOpen(true);
   };
 
-  // Filtrar inventario por fecha de ingreso
-  const filterInventoryByDate = (items) => {
-    if (selectedMonth === 'all') return items;
+  // Funciones de filtrado y utilidades
+  const filterInventoryByDate = (items, dateFilter) => {
+    if (!dateFilter) return items;
+    
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
     return items.filter(item => {
-      if (!item.fechaingreso) return false;
-      const itemDate = new Date(item.fechaingreso);
-      const itemYear = itemDate.getFullYear().toString();
-      const itemMonth = (itemDate.getMonth() + 1).toString().padStart(2, '0');
+      const itemDate = new Date(item.created_at);
+      const itemDateOnly = new Date(itemDate.getFullYear(), itemDate.getMonth(), itemDate.getDate());
       
-      return itemYear === selectedYear && itemMonth === selectedMonth;
+      switch (dateFilter) {
+        case 'today':
+          return itemDateOnly.getTime() === today.getTime();
+        case 'yesterday':
+          const yesterday = new Date(today);
+          yesterday.setDate(yesterday.getDate() - 1);
+          return itemDateOnly.getTime() === yesterday.getTime();
+        case 'this_week':
+          const startOfWeek = new Date(today);
+          startOfWeek.setDate(today.getDate() - today.getDay());
+          return itemDateOnly >= startOfWeek;
+        case 'last_week':
+          const startOfLastWeek = new Date(today);
+          startOfLastWeek.setDate(today.getDate() - today.getDay() - 7);
+          const endOfLastWeek = new Date(today);
+          endOfLastWeek.setDate(today.getDate() - today.getDay() - 1);
+          return itemDateOnly >= startOfLastWeek && itemDateOnly <= endOfLastWeek;
+        case 'this_month':
+          return itemDate.getMonth() === now.getMonth() && itemDate.getFullYear() === now.getFullYear();
+        case 'last_month':
+          const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          return itemDate.getMonth() === lastMonth.getMonth() && itemDate.getFullYear() === lastMonth.getFullYear();
+        case 'this_year':
+          return itemDate.getFullYear() === now.getFullYear();
+        default:
+          return true;
+      }
     });
   };
-// Agregar esta función después de la función filterInventoryByDate (alrededor de la línea 338)
-const filterSalesByDate = (sales) => {
-  if (selectedMonth === 'all') return sales;
-  
-  return sales.filter(sale => {
-    if (!sale.fecha_venta) return false;
-    const saleDate = new Date(sale.fecha_venta);
-    const saleYear = saleDate.getFullYear().toString();
-    const saleMonth = (saleDate.getMonth() + 1).toString().padStart(2, '0');
-    const saleDay = saleDate.getDate().toString().padStart(2, '0');
-    
-    const yearMatch = saleYear === selectedYear;
-    const monthMatch = saleMonth === selectedMonth;
-    const dayMatch = selectedDay === 'all' || saleDay === selectedDay;
-    
-    return yearMatch && monthMatch && dayMatch;
-  });
-};
 
+  const filterSalesByDate = (sales, dateFilter) => {
+    if (!dateFilter) return sales;
+    
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    return sales.filter(sale => {
+      const saleDate = new Date(sale.fecha_venta);
+      const saleDateOnly = new Date(saleDate.getFullYear(), saleDate.getMonth(), saleDate.getDate());
+      
+      switch (dateFilter) {
+        case 'today':
+          return saleDateOnly.getTime() === today.getTime();
+        case 'yesterday':
+          const yesterday = new Date(today);
+          yesterday.setDate(yesterday.getDate() - 1);
+          return saleDateOnly.getTime() === yesterday.getTime();
+        case 'this_week':
+          const startOfWeek = new Date(today);
+          startOfWeek.setDate(today.getDate() - today.getDay());
+          return saleDateOnly >= startOfWeek;
+        case 'last_week':
+          const startOfLastWeek = new Date(today);
+          startOfLastWeek.setDate(today.getDate() - today.getDay() - 7);
+          const endOfLastWeek = new Date(today);
+          endOfLastWeek.setDate(today.getDate() - today.getDay() - 1);
+          return saleDateOnly >= startOfLastWeek && saleDateOnly <= endOfLastWeek;
+        case 'this_month':
+          return saleDate.getMonth() === now.getMonth() && saleDate.getFullYear() === now.getFullYear();
+        case 'last_month':
+          const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          return saleDate.getMonth() === lastMonth.getMonth() && saleDate.getFullYear() === lastMonth.getFullYear();
+        case 'this_year':
+          return saleDate.getFullYear() === now.getFullYear();
+        default:
+          return true;
+      }
+    });
+  };
 
   const exportToTXT = () => {
-    const currentDate = new Date().toLocaleDateString('es-ES');
-    const currentTime = new Date().toLocaleTimeString('es-ES');
-    
-    // Crear encabezado bonito
-    const header = `
-===============================================
-           INVENTARIO SÁBANAS Y COBERTORES
-===============================================
-Fecha de exportación: ${currentDate} - ${currentTime}
-Total de productos: ${filteredInventory.length}
-===============================================
+    const filteredInventory = filterInventoryByDate(inventory, inventoryDateFilter)
+      .filter(item => {
+        const matchesSearch = item.nombre?.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchesCategory = !categoryFilter || item.categoria === categoryFilter;
+        const matchesAgeGroup = !ageGroupFilter || item.grupoedad === ageGroupFilter;
+        const matchesSize = !sizeFilter || item.tamaño === sizeFilter;
+        const matchesLocation = !locationFilter || item.ubicacion === locationFilter;
+        return matchesSearch && matchesCategory && matchesAgeGroup && matchesSize && matchesLocation;
+      });
 
-`;
+    let content = 'INVENTARIO MICAMA\n';
+    content += '='.repeat(50) + '\n\n';
+    content += `Fecha de exportación: ${new Date().toLocaleDateString('es-ES')}\n`;
+    content += `Total de productos: ${filteredInventory.length}\n\n`;
     
-    // Formatear datos con espaciado fijo
-    const formatField = (value, width) => {
-      const str = (value || '').toString();
-      return str.length > width ? str.substring(0, width-3) + '...' : str.padEnd(width);
-    };
-    
-    const headers = `${'NOMBRE'.padEnd(25)} | ${'CATEGORÍA'.padEnd(15)} | ${'TAMAÑO'.padEnd(12)} | ${'COLOR'.padEnd(15)} | ${'STOCK'.padEnd(8)} | ${'PRECIO'.padEnd(10)} | ${'UBICACIÓN'.padEnd(15)} | ${'ESTADO'.padEnd(12)}`;
-    const separator = '='.repeat(headers.length);
-    
-    const rows = sortPillowsByDimensions(filteredInventory).map(item => 
-      `${formatField(item.nombre, 25)} | ${formatField(item.categoria, 15)} | ${formatField(item.tamaño, 12)} | ${formatField(item.color, 15)} | ${formatField(item.cantidadstock, 8)} | ${formatField(`$${item.precioventa}`, 10)} | ${formatField(item.ubicacion, 15)} | ${formatField(item.estado, 12)}`
-    );
-    
-    const footer = `\n\n===============================================\nResumen por categoría:\n===============================================\n`;
-    
-    // Crear resumen por categoría
-    const categoryStats = {};
-    sortPillowsByDimensions(filteredInventory).forEach(item => {
-      if (!categoryStats[item.categoria]) {
-        categoryStats[item.categoria] = { count: 0, totalStock: 0 };
+    filteredInventory.forEach((item, index) => {
+      content += `${index + 1}. ${item.nombre}\n`;
+      content += `   Categoría: ${item.categoria || 'N/A'}\n`;
+      content += `   Grupo de Edad: ${item.grupoedad || 'N/A'}\n`;
+      content += `   Tamaño: ${item.tamaño || 'N/A'}\n`;
+      content += `   Color: ${item.color || 'N/A'}\n`;
+      content += `   Stock: ${item.cantidadstock || 0}\n`;
+      content += `   Precio Venta: $${item.precioventa || 0}\n`;
+      content += `   Ubicación: ${item.ubicacion || 'N/A'}\n`;
+      if (item.notas) {
+        content += `   Notas: ${item.notas}\n`;
       }
-      categoryStats[item.categoria].count++;
-      categoryStats[item.categoria].totalStock += parseInt(item.cantidadstock) || 0;
+      content += '\n';
     });
-    
-    const categoryReport = Object.entries(categoryStats)
-      .map(([category, stats]) => `${category.padEnd(20)}: ${stats.count.toString().padStart(3)} productos | Stock total: ${stats.totalStock.toString().padStart(4)}`)
-      .join('\n');
-    
-    const txtContent = header + headers + '\n' + separator + '\n' + rows.join('\n') + footer + categoryReport + '\n\n===============================================\nFin del reporte\n===============================================';
-    
-    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
-    const link = document.createElement('a');
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `inventario_${currentDate.replace(/\//g, '-')}.txt`);
-    link.style.visibility = 'hidden';
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `inventario_micama_${new Date().toISOString().split('T')[0]}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
+
+
 
   const exportSalesToTXT = () => {
-    const currentDate = new Date().toLocaleDateString('es-ES');
-    const currentTime = new Date().toLocaleTimeString('es-ES');
-    
-    // Crear encabezado bonito
-    const header = `
-===============================================
-              REPORTE DE VENTAS
-===============================================
-Fecha de exportación: ${currentDate} - ${currentTime}
-Total de ventas: ${filteredSales.length}
-Período: ${selectedMonth !== 'all' ? months.find(m => m.value === selectedMonth)?.label + ' ' + selectedYear : 'Todas las fechas'}
-===============================================
+    const filteredSales = filterSalesByDate(sales, salesDateFilter)
+      .filter(sale => {
+        const matchesSearch = sale.nombre?.toLowerCase().includes(salesSearchTerm.toLowerCase());
+        const matchesCategory = !salesCategoryFilter || sale.categoria === salesCategoryFilter;
+        return matchesSearch && matchesCategory;
+      });
 
-`;
+    let content = 'REPORTE DE VENTAS MICAMA\n';
+    content += '='.repeat(50) + '\n\n';
+    content += `Fecha de exportación: ${new Date().toLocaleDateString('es-ES')}\n`;
+    content += `Total de ventas: ${filteredSales.length}\n`;
+    content += `Total vendido: $${filteredSales.reduce((sum, sale) => sum + (sale.total_venta || 0), 0).toLocaleString()}\n\n`;
     
-    // Formatear datos con espaciado fijo
-    const formatField = (value, width) => {
-      const str = (value || '').toString();
-      return str.length > width ? str.substring(0, width-3) + '...' : str.padEnd(width);
-    };
-    
-    const headers = `${'FECHA Y HORA'.padEnd(18)} | ${'PRODUCTO'.padEnd(25)} | ${'CATEGORÍA'.padEnd(15)} | ${'CANT.'.padEnd(6)} | ${'P.UNIT'.padEnd(10)} | ${'TOTAL'.padEnd(10)} | ${'PAGO'.padEnd(10)}`;
-    const separator = '='.repeat(headers.length);
-    
-    const rows = sortPillowsByDimensions(filteredSales).map(sale => {
-      const fechaCompleta = new Date(sale.fecha_venta);
-      const fechaFormateada = `${fechaCompleta.toLocaleDateString('es-ES')} ${fechaCompleta.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}`;
-      return `${formatField(fechaFormateada, 18)} | ${formatField(sale.nombre, 25)} | ${formatField(sale.categoria, 15)} | ${formatField(sale.cantidad_vendida, 6)} | ${formatField(`$${sale.precio_venta}`, 10)} | ${formatField(`$${sale.total_venta}`, 10)} | ${formatField(sale.metodo_pago, 10)}`;
-    });
-    
-    // Calcular totales
-    const totalVentas = filteredSales.reduce((sum, sale) => sum + (parseFloat(sale.total_venta) || 0), 0);
-    const totalProductos = filteredSales.reduce((sum, sale) => sum + (parseInt(sale.cantidad_vendida) || 0), 0);
-    
-    const footer = `\n\n===============================================\nRESUMEN DE VENTAS\n===============================================\nTotal productos vendidos: ${totalProductos}\nTotal en ventas: $${totalVentas.toFixed(2)}\nPromedio por venta: $${(totalVentas / filteredSales.length || 0).toFixed(2)}\n\n`;
-    
-    // Resumen por método de pago
-    const paymentStats = {};
-    sortPillowsByDimensions(filteredSales).forEach(sale => {
-      if (!paymentStats[sale.metodo_pago]) {
-        paymentStats[sale.metodo_pago] = { count: 0, total: 0 };
+    filteredSales.forEach((sale, index) => {
+      content += `${index + 1}. ${sale.nombre}\n`;
+      content += `   Fecha: ${new Date(sale.fecha_venta).toLocaleDateString('es-ES')}\n`;
+      content += `   Categoría: ${sale.categoria || 'N/A'}\n`;
+      content += `   Cantidad: ${sale.cantidad_vendida}\n`;
+      content += `   Precio Unitario: $${sale.precio_venta?.toLocaleString() || 0}\n`;
+      content += `   Total: $${sale.total_venta?.toLocaleString() || 0}\n`;
+      content += `   Método de Pago: ${sale.metodo_pago || 'N/A'}\n`;
+      if (sale.notas) {
+        content += `   Notas: ${sale.notas}\n`;
       }
-      paymentStats[sale.metodo_pago].count++;
-      paymentStats[sale.metodo_pago].total += parseFloat(sale.total_venta) || 0;
+      content += '\n';
     });
-    
-    const paymentReport = 'Ventas por método de pago:\n' + 
-      Object.entries(paymentStats)
-        .map(([method, stats]) => `${method.padEnd(15)}: ${stats.count.toString().padStart(3)} ventas | Total: $${stats.total.toFixed(2).padStart(10)}`)
-        .join('\n');
-    
-    const txtContent = header + headers + '\n' + separator + '\n' + rows.join('\n') + footer + paymentReport + '\n\n===============================================\nFin del reporte\n===============================================';
-    
-    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
-    const link = document.createElement('a');
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `ventas_${currentDate.replace(/\//g, '-')}.txt`);
-    link.style.visibility = 'hidden';
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ventas_micama_${new Date().toISOString().split('T')[0]}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
-// ===== COMPONENTES MÓVILES =====
-
-// Componente para tarjetas de inventario en móvil
-const MobileInventoryCard = ({ item, sellItem, editItem, deleteItem }) => (
-  <div className="mobile-card show-mobile">
-    <div className="mobile-card-header">
-      <div>
-        <div className="mobile-card-title">{item.nombre || 'Sin nombre'}</div>
-        {item.codigo && (
-          <div className="mobile-card-subtitle">{item.codigo}</div>
-        )}
+  // Componentes móviles
+  const MobileInventoryCard = ({ item }) => (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-3">
+      <div className="flex justify-between items-start mb-2">
+        <h3 className="font-medium text-gray-900 text-sm">{item.nombre}</h3>
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+          item.cantidadstock > 10 ? 'bg-green-100 text-green-800' :
+          item.cantidadstock > 0 ? 'bg-yellow-100 text-yellow-800' :
+          'bg-red-100 text-red-800'
+        }`}>
+          Stock: {item.cantidadstock}
+        </span>
       </div>
-      <div className="mobile-card-actions">
-        <button
-          onClick={() => sellItem(item)}
-          disabled={(item.cantidadstock || 0) <= 0}
-          className={`p-2 rounded ${(item.cantidadstock || 0) > 0 ? 'text-green-600' : 'text-gray-400'}`}
-          title="Vender"
-        >
-          <DollarSign className="w-4 h-4" />
-        </button>
+      
+      <div className="space-y-1 text-xs text-gray-600 mb-3">
+        <p><span className="font-medium">Categoría:</span> {item.categoria}</p>
+        <p><span className="font-medium">Tamaño:</span> {item.tamaño}</p>
+        <p><span className="font-medium">Color:</span> {item.color}</p>
+        <p><span className="font-medium">Precio:</span> ${item.precioventa}</p>
+      </div>
+      
+      <div className="flex gap-2">
         <button
           onClick={() => {
-            setReservingItem(item);
-            setIsReservationModalOpen(true);
+            setSelectedInventoryDetails(item);
+            setIsInventoryDetailsModalOpen(true);
           }}
-          className="p-2 text-purple-600 rounded"
-          title="Reservar"
+          className="flex-1 bg-gray-50 text-gray-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-gray-100"
         >
-          <Calendar className="w-4 h-4" />
+          <Eye className="w-3 h-3 inline mr-1" />
+          Ver
         </button>
         <button
           onClick={() => editItem(item)}
-          className="p-2 text-blue-600 rounded"
-          title="Editar"
+          className="flex-1 bg-blue-50 text-blue-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-blue-100"
         >
-          <Edit2 className="w-4 h-4" />
+          <Edit2 className="w-3 h-3 inline mr-1" />
+          Editar
         </button>
         <button
-          onClick={() => deleteItem(item.id)}
-          className="p-2 text-red-600 rounded"
-          title="Eliminar"
+          onClick={() => sellItem(item)}
+          className="flex-1 bg-green-50 text-green-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-green-100"
         >
-          <Trash2 className="w-4 h-4" />
+          <ShoppingCart className="w-3 h-3 inline mr-1" />
+          Vender
+        </button>
+        <button
+          onClick={() => {
+            if (window.confirm('¿Estás seguro de que deseas eliminar este producto?')) {
+              deleteItem(item.id);
+            }
+          }}
+          className="bg-red-50 text-red-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-red-100"
+        >
+          <Trash2 className="w-3 h-3" />
         </button>
       </div>
     </div>
-    <div className="mobile-card-content">
-      <div className="mobile-card-field">
-        <div className="mobile-card-label">Categoría</div>
-        <div className="mobile-card-value">{item.categoria?.replace('_', ' ') || 'Sin categoría'}</div>
-      </div>
-      {item.tamaño && (
-        <div className="mobile-card-field">
-          <div className="mobile-card-label">Tamaño</div>
-          <div className="mobile-card-value">{item.tamaño}</div>
-        </div>
-      )}
-      <div className="mobile-card-field">
-        <div className="mobile-card-label">Stock</div>
-        <div className="mobile-card-value flex items-center">
-          {item.cantidadstock || 0}
-          {(item.cantidadstock || 0) <= (item.stockminimo || 0) && (
-            <AlertTriangle className="w-4 h-4 text-red-500 ml-1" />
-          )}
-        </div>
-      </div>
-      <div className="mobile-card-field">
-        <div className="mobile-card-label">Precio</div>
-        <div className="mobile-card-value">${(item.precioventa || 0).toLocaleString()}</div>
-      </div>
-      <div className="mobile-card-field">
-        <div className="mobile-card-label">Estado</div>
-        <div className="mobile-card-value">
-          <span className={`px-2 py-1 text-xs rounded-full ${
-            item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
-            item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
-            item.estado === 'vendido' ? 'bg-gray-100 text-gray-800' :
-            'bg-red-100 text-red-800'
-          }`}>
-            {item.estado || 'Sin estado'}
-          </span>
-        </div>
-      </div>
-      {item.color && (
-        <div className="mobile-card-field">
-          <div className="mobile-card-label">Color</div>
-          <div className="mobile-card-value">{item.color}</div>
-        </div>
-      )}
-      {item.ubicacion && (
-        <div className="mobile-card-field">
-          <div className="mobile-card-label">Ubicación</div>
-          <div className="mobile-card-value">{item.ubicacion}</div>
-        </div>
-      )}
-      {item.proveedor && (
-        <div className="mobile-card-field">
-          <div className="mobile-card-label">Proveedor</div>
-          <div className="mobile-card-value">{item.proveedor}</div>
-        </div>
-      )}
-    </div>
-  </div>
-);
+  );
 
-// Componente para tarjetas de ventas en móvil
-const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
-  const extractClientFromNotes = (notes) => {
-    if (!notes) return 'Cliente no especificado';
-    const clientMatch = notes.match(/Cliente:\s*([^,\n]+)/);
-    return clientMatch ? clientMatch[1].trim() : 'Cliente no especificado';
-  };
-
-  return (
-    <div className="bg-white p-6 rounded-lg shadow mb-4 show-mobile">
-      {/* Header con icono y información principal */}
-      <div className="flex items-center mb-4">
-        <Package className="w-8 h-8 text-blue-600" />
-        <div className="ml-4 flex-1">
-          <p className="text-lg font-bold text-gray-900">{sale.nombre}</p>
-          <p className="text-sm text-gray-500">{new Date(sale.fecha_venta).toLocaleDateString()}</p>
-        </div>
-        <div className="text-right">
-          <p className="text-xl font-bold text-green-600">CLP {sale.total_venta?.toLocaleString()}</p>
-        </div>
+  const MobileSalesCard = ({ sale }) => (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-3">
+      <div className="flex justify-between items-start mb-2">
+        <h3 className="font-medium text-gray-900 text-sm">{sale.nombre}</h3>
+        <span className="text-green-600 font-bold text-sm">
+          ${sale.total_venta?.toLocaleString()}
+        </span>
       </div>
-
-      {/* Grid de información */}
-      <div className="grid grid-cols-2 gap-4 mb-4">
-        <div className="flex items-center">
-          <Tag className="w-5 h-5 text-purple-600 mr-2" />
-          <div>
-            <p className="text-xs text-gray-500">Categoría</p>
-            <p className="text-sm font-medium text-gray-900">{sale.categoria}</p>
-          </div>
-        </div>
-        
-        <div className="flex items-center">
-          <Package className="w-5 h-5 text-orange-600 mr-2" />
-          <div>
-            <p className="text-xs text-gray-500">Tamaño</p>
-            <p className="text-sm font-medium text-gray-900">{sale.tamaño}</p>
-          </div>
-        </div>
-        
-        <div className="flex items-center">
-          <Hash className="w-5 h-5 text-blue-600 mr-2" />
-          <div>
-            <p className="text-xs text-gray-500">Cantidad</p>
-            <p className="text-sm font-medium text-gray-900">{sale.cantidad_vendida}</p>
-          </div>
-        </div>
-        
-        <div className="flex items-center">
-          <DollarSign className="w-5 h-5 text-green-600 mr-2" />
-          <div>
-            <p className="text-xs text-gray-500">Precio Unit.</p>
-            <p className="text-sm font-medium text-gray-900">CLP {sale.precio_venta?.toLocaleString()}</p>
-          </div>
-        </div>
+      
+      <div className="space-y-1 text-xs text-gray-600 mb-3">
+        <p><span className="font-medium">Fecha:</span> {new Date(sale.fecha_venta).toLocaleDateString('es-ES')}</p>
+        <p><span className="font-medium">Cantidad:</span> {sale.cantidad_vendida}</p>
+        <p><span className="font-medium">Precio Unit.:</span> ${sale.precio_venta?.toLocaleString()}</p>
+        <p><span className="font-medium">Método:</span> {sale.metodo_pago}</p>
       </div>
-
-      {/* Información adicional */}
-      <div className="space-y-2 mb-4">
-        <div className="flex items-center">
-          <CreditCard className="w-5 h-5 text-indigo-600 mr-2" />
-          <div>
-            <p className="text-xs text-gray-500">Método de Pago</p>
-            <p className="text-sm font-medium text-gray-900">{sale.metodo_pago}</p>
-          </div>
-        </div>
-        
-        <div className="flex items-center">
-          <User className="w-5 h-5 text-teal-600 mr-2" />
-          <div>
-            <p className="text-xs text-gray-500">Cliente</p>
-            <p className="text-sm font-medium text-gray-900">{extractClientFromNotes(sale.notas)}</p>
-          </div>
-        </div>
-        
-        {sale.notas && (
-          <div className="flex items-start">
-            <FileText className="w-5 h-5 text-gray-600 mr-2 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-xs text-gray-500">Notas</p>
-              <p className="text-sm text-gray-700 break-words">{sale.notas}</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Botones de acción */}
-      <div className="flex justify-end space-x-2 pt-4 border-t border-gray-200">
+      
+      <div className="flex gap-2">
         <button
-          onClick={() => onSaleClick(sale)}
-          className="flex items-center px-3 py-2 text-sm bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+          onClick={() => openSaleDetails(sale)}
+          className="flex-1 bg-blue-50 text-blue-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-blue-100"
         >
-          <Search className="w-4 h-4 mr-1" />
+          <Eye className="w-3 h-3 inline mr-1" />
           Ver
         </button>
         <button
           onClick={() => openEditSale(sale)}
-          className="flex items-center px-3 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          className="flex-1 bg-yellow-50 text-yellow-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-yellow-100"
         >
-          <Edit className="w-4 h-4 mr-1" />
+          <Edit2 className="w-3 h-3 inline mr-1" />
           Editar
         </button>
         <button
-          onClick={() => deleteSale(sale.id)}
-          className="flex items-center px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          onClick={() => {
+            if (window.confirm('¿Estás seguro de que deseas eliminar esta venta?')) {
+              deleteSale(sale.id);
+            }
+          }}
+          className="bg-red-50 text-red-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-red-100"
         >
-          <Trash2 className="w-4 h-4 mr-1" />
-          Eliminar
+          <Trash2 className="w-3 h-3" />
         </button>
       </div>
     </div>
   );
-};
 
+  const getSortedSales = () => {
+    let filtered = sales.filter(sale => {
+      const matchesSearch = sale.nombre?.toLowerCase().includes(salesSearchTerm.toLowerCase());
+      const matchesCategory = !salesCategoryFilter || sale.categoria === salesCategoryFilter;
+      return matchesSearch && matchesCategory;
+    });
 
+    filtered = filterSalesByDate(filtered, salesDateFilter);
 
-  // ✅ Solo después de todas las verificaciones de estado
-  const safeInventory = Array.isArray(inventory) ? inventory.filter(item => item && typeof item === 'object') : [];
-  const safeSales = Array.isArray(sales) ? sales.filter(sale => sale && typeof sale === 'object') : [];
-  const dateFilteredInventory = filterInventoryByDate(safeInventory);
-  
-  const getUniqueLocations = () => {
-    if (!safeInventory || safeInventory.length === 0) {
-      return [{ value: 'all', label: 'Todas las ubicaciones' }];
-    }
-    
-    try {
-      const locations = [...new Set(
-        safeInventory
-          .filter(item => item && typeof item === 'object' && item.ubicacion)
-          .map(item => item.ubicacion)
-          .filter(location => typeof location === 'string' && location.trim() !== '')
-      )];
+    return filtered.sort((a, b) => {
+      let aValue, bValue;
       
-      return [
-        { value: 'all', label: 'Todas las ubicaciones' },
-        ...locations.map(location => ({ value: location, label: location }))
-      ];
-    } catch (error) {
-      console.error('Error in getUniqueLocations:', error);
-      return [{ value: 'all', label: 'Todas las ubicaciones' }];
-    }
-  };
-  
-  let filteredInventory = dateFilteredInventory.filter(item => {
-    if (!item || typeof item !== 'object') return false;
-    
-    try {
-      const matchesSearch = searchTerm === '' || 
-        (item.nombre || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.codigo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.categoria || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.color || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.proveedor || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.ubicacion || '').toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = selectedCategory === 'all' || item.categoria === selectedCategory;
-      const matchesSize = selectedSize === 'all' || item.tamaño === selectedSize;
-      const matchesLocation = selectedLocation === 'all' || item.ubicacion === selectedLocation;
-      const matchesAgeGroup = selectedAgeGroup === 'all' || item.grupo_edad === selectedAgeGroup;
-      return matchesSearch && matchesCategory && matchesSize && matchesLocation && matchesAgeGroup;
-    } catch (error) {
-      console.error('Error filtering item:', item, error);
-      return false;
-    }
-  });
-
-  // Aplicar filtros a las ventas
-  const filteredSales = filterSalesByDate(safeSales);
-
-  // Función para ordenar almohadas por dimensiones (de menor a mayor)
-  const sortPillowsByDimensions = (items) => {
-    return items.sort((a, b) => {
-      // Si no son almohadas, mantener orden original
-      if (a.categoria !== 'Almohada' && b.categoria !== 'Almohada') {
-        return 0;
+      switch (salesSortBy) {
+        case 'fecha_venta':
+          aValue = new Date(a.fecha_venta);
+          bValue = new Date(b.fecha_venta);
+          break;
+        case 'nombre':
+          aValue = a.nombre?.toLowerCase() || '';
+          bValue = b.nombre?.toLowerCase() || '';
+          break;
+        case 'total_venta':
+          aValue = a.total_venta || 0;
+          bValue = b.total_venta || 0;
+          break;
+        case 'cantidad_vendida':
+          aValue = a.cantidad_vendida || 0;
+          bValue = b.cantidad_vendida || 0;
+          break;
+        default:
+          return 0;
       }
       
-      // Priorizar almohadas al inicio si hay mezcla de categorías
-      if (a.categoria === 'Almohada' && b.categoria !== 'Almohada') {
-        return -1;
-      }
-      if (a.categoria !== 'Almohada' && b.categoria === 'Almohada') {
-        return 1;
-      }
-      
-      // Ambos son almohadas, ordenar por dimensiones
-      const extractArea = (size) => {
-        const match = size.match(/(\d+)x(\d+)/);
-        if (match) {
-          return parseInt(match[1]) * parseInt(match[2]); // Área total
-        }
-        return 0;
-      };
-      
-      const areaA = extractArea(a.tamaño || '');
-      const areaB = extractArea(b.tamaño || '');
-      
-      return areaA - areaB; // Ordenar de menor a mayor área
+      if (aValue < bValue) return salesSortOrder === 'asc' ? -1 : 1;
+      if (aValue > bValue) return salesSortOrder === 'asc' ? 1 : -1;
+      return 0;
     });
   };
-
-  // Función para extraer cliente de las notas
-  const extractClientFromNotes = (notas) => {
-    if (!notas) return null;
-    const match = notas.match(/Cliente: ([^,]+)/);
-    return match ? match[1].trim() : null;
-  };
-
-  // Función para ordenar ventas
-  const getSortedSales = (sales) => {
-    if (salesSort === 'cliente') {
-      return [...sales].sort((a, b) => {
-        const clienteA = extractClientFromNotes(a.notas) || 'Sin cliente';
-        const clienteB = extractClientFromNotes(b.notas) || 'Sin cliente';
-        return clienteA.localeCompare(clienteB);
-      });
-    } else if (salesSort === 'fecha') {
-      return [...sales].sort((a, b) => new Date(b.fecha_venta) - new Date(a.fecha_venta));
-    } else {
-      // Para 'todos' o cualquier otro valor, mostrar por fecha (más reciente primero)
-      return [...sales].sort((a, b) => new Date(b.fecha_venta) - new Date(a.fecha_venta));
-    }
-  };
-
-  // Aplicar ordenamiento especial para almohadas
-  if (selectedCategory === 'Almohada' || 
-      (selectedCategory === 'all' && filteredInventory.some(item => item.categoria === 'Almohada'))) {
-    filteredInventory = sortPillowsByDimensions(filteredInventory);
-  }
 
   const calculateDailyEarnings = () => {
-    const dailyEarnings = {};
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     
-    filteredSales.forEach(sale => {
-      const saleDate = new Date(sale.fecha_venta).toLocaleDateString('es-ES');
-      const earnings = parseFloat(sale.total_venta) || 0;
-      
-      if (dailyEarnings[saleDate]) {
-        dailyEarnings[saleDate] += earnings;
-      } else {
-        dailyEarnings[saleDate] = earnings;
-      }
-    });
-    
-    return dailyEarnings;
+    return sales
+      .filter(sale => {
+        let saleDate;
+        if (typeof sale.fecha_venta === 'string') {
+          saleDate = sale.fecha_venta.split('T')[0];
+        } else {
+          const date = new Date(sale.fecha_venta);
+          saleDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        }
+        return saleDate === todayStr;
+      })
+      .reduce((total, sale) => total + (sale.total_venta || 0), 0);
   };
+
+  const calculateUniqueSalesDays = () => {
+    const uniqueDates = new Set();
+    sales.forEach(sale => {
+      let saleDate;
+      if (typeof sale.fecha_venta === 'string') {
+        saleDate = sale.fecha_venta.split('T')[0];
+      } else {
+        const date = new Date(sale.fecha_venta);
+        saleDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      }
+      uniqueDates.add(saleDate);
+    });
+    return uniqueDates.size;
+  };
+
+
 
   const getDailyEarningsStats = () => {
-    const dailyEarnings = calculateDailyEarnings();
-    const dates = Object.keys(dailyEarnings).sort((a, b) => new Date(a.split('/').reverse().join('-')) - new Date(b.split('/').reverse().join('-')));
+    const last7Days = [];
+    const today = new Date();
     
-    const totalEarnings = Object.values(dailyEarnings).reduce((sum, earnings) => sum + earnings, 0);
-    const averageDaily = dates.length > 0 ? totalEarnings / dates.length : 0;
-    const bestDay = dates.reduce((best, date) => 
-      dailyEarnings[date] > (dailyEarnings[best] || 0) ? date : best, dates[0]
-    );
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      
+      const dayEarnings = sales
+        .filter(sale => {
+          const saleDate = new Date(sale.fecha_venta).toISOString().split('T')[0];
+          return saleDate === dateStr;
+        })
+        .reduce((total, sale) => total + (sale.total_venta || 0), 0);
+      
+      last7Days.push({
+        date: dateStr,
+        day: date.toLocaleDateString('es-ES', { weekday: 'short' }),
+        earnings: dayEarnings
+      });
+    }
     
-    return {
-      dailyEarnings,
-      totalEarnings,
-      averageDaily: Math.round(averageDaily),
-      bestDay,
-      totalDays: dates.length
-    };
+    return last7Days;
   };
 
-  const lowStockItems = sortPillowsByDimensions(
-    dateFilteredInventory.filter(item => 
-      item && typeof item.cantidadstock === 'number' && typeof item.stockminimo === 'number' && 
-      item.cantidadstock <= item.stockminimo
-    )
-  );
-  
-  const totalValue = sortPillowsByDimensions(dateFilteredInventory).reduce((sum, item) => {
-    if (!item || typeof item.cantidadstock !== 'number' || typeof item.precioventa !== 'number') {
-      return sum;
-    }
-    return sum + (item.cantidadstock * item.precioventa);
-  }, 0);
-  
-  const totalItems = sortPillowsByDimensions(dateFilteredInventory).reduce((sum, item) => {
-    if (!item || typeof item.cantidadstock !== 'number') {
-      return sum;
-    }
-    return sum + item.cantidadstock;
-  }, 0);
-  
-  // Estadísticas de ventas
-  const totalSales = filteredSales.reduce((sum, sale) => {
-    if (!sale || typeof sale.total_venta !== 'number') {
-      return sum;
-    }
-    return sum + sale.total_venta;
-  }, 0);
+  // Estadísticas calculadas
+  const totalValue = inventory.reduce((sum, item) => sum + (item.precioventa * item.cantidadstock), 0);
+  const totalItems = inventory.reduce((sum, item) => sum + item.cantidadstock, 0);
+  const totalSales = sales.reduce((sum, sale) => sum + (sale.total_venta || 0), 0);
+  const dailyEarnings = calculateDailyEarnings();
+  const dailyStats = getDailyEarningsStats();
+  const uniqueSalesDays = calculateUniqueSalesDays();
 
-  // Pantalla de error (solo si hay error y todo está listo)
-  if (error) {
+
+
+  // Función de debug para el filtro de grupo de edad
+  const debugAgeGroupFilter = () => {
+    console.log('🔍 DEBUG FILTRO GRUPO DE EDAD:');
+    console.log('ageGroupFilter seleccionado:', ageGroupFilter);
+    console.log('Productos en inventario:', inventory.length);
+    
+    // Mostrar todos los valores únicos de grupo_edad en el inventario
+    const gruposEdad = [...new Set(inventory.map(item => item.grupo_edad).filter(Boolean))];
+    console.log('Grupos de edad disponibles en BD:', gruposEdad);
+    
+    // Mostrar algunos productos de ejemplo
+    console.log('Primeros 3 productos con sus grupos de edad:');
+    inventory.slice(0, 3).forEach(item => {
+      console.log(`- ${item.nombre}: grupo_edad = "${item.grupo_edad}" (tipo: ${typeof item.grupo_edad})`);
+    });
+    
+    // Mostrar productos filtrados
+    if (ageGroupFilter) {
+      const filtrados = inventory.filter(item => item.grupo_edad === ageGroupFilter);
+      console.log(`Productos que coinciden con "${ageGroupFilter}":`, filtrados.length);
+      filtrados.forEach(item => {
+        console.log(`- ${item.nombre}: "${item.grupo_edad}"`);
+      });
+    }
+  };
+
+  // Llamar la función cuando cambie el filtro
+  if (ageGroupFilter) {
+    debugAgeGroupFilter();
+  }
+
+  // Filtrado de inventario
+  const filteredInventory = filterInventoryByDate(inventory, inventoryDateFilter)
+    .filter(item => {
+      const matchesSearch = item.nombre?.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = !categoryFilter || item.categoria === categoryFilter;
+      const matchesAgeGroup = !ageGroupFilter || item.grupo_edad === ageGroupFilter;
+      const matchesSize = !sizeFilter || item.tamaño === sizeFilter;
+      const matchesLocation = !locationFilter || item.ubicacion === locationFilter;
+      return matchesSearch && matchesCategory && matchesAgeGroup && matchesSize && matchesLocation;
+    })
+    .sort((a, b) => {
+      let aValue, bValue;
+      
+      switch (sortBy) {
+        case 'nombre':
+          aValue = a.nombre?.toLowerCase() || '';
+          bValue = b.nombre?.toLowerCase() || '';
+          break;
+        case 'categoria':
+          aValue = a.categoria?.toLowerCase() || '';
+          bValue = b.categoria?.toLowerCase() || '';
+          break;
+        case 'cantidadstock':
+          aValue = a.cantidadstock || 0;
+          bValue = b.cantidadstock || 0;
+          break;
+        case 'precioventa':
+          aValue = a.precioventa || 0;
+          bValue = b.precioventa || 0;
+          break;
+        default:
+          return 0;
+      }
+      
+      if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+  const sortedSales = getSortedSales();
+
+  // Preloader
+  if (showPreloader) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-red-600 mb-4">
-            <AlertTriangle className="w-12 h-12 mx-auto mb-2" />
-            <p className="text-lg font-semibold">Error al cargar los datos</p>
+          <div className="w-16 h-16 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-2xl font-bold text-gray-800 mb-2">MiCama Inventario</h2>
+          <p className="text-gray-600">Cargando sistema...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Login
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-xl p-8 w-full max-w-md">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-800 mb-2">MiCama</h1>
+            <p className="text-gray-600">Sistema de Inventario</p>
           </div>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button 
-            onClick={() => {
-              setError(null);
-              setIsInitialized(false);
-              setAppReady(false);
-              window.location.reload();
-            }} 
-            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            Recargar página
-          </button>
+          
+          <form onSubmit={handleLogin} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="tu@email.com"
+              />
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Contraseña
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="••••••••"
+              />
+            </div>
+            
+            {loginError && (
+              <div className="text-red-600 text-sm text-center">
+                {loginError}
+              </div>
+            )}
+            
+            <button
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+            >
+              {isLoggingIn ? 'Iniciando sesión...' : 'Iniciar Sesión'}
+            </button>
+          </form>
         </div>
       </div>
     );
@@ -1489,1209 +1105,781 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Preloader */}
-      {showPreloader && <PreloaderComponent showPreloader={showPreloader} />}
-      
-      {/* Skeleton loader durante la transición */}
-      {!showPreloader && !contentReady && (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50">
-          <SkeletonLoader />
-        </div>
-      )}
-      
-      {/* Contenido principal - Solo mostrar cuando preloader termine Y contenido esté listo */}
-      {!showPreloader && contentReady && (
-        <div className={`content-fade-in ${viewTransition ? 'view-transition entering' : 'view-transition entered'} gpu-accelerated`}>
-          {/* Pantalla de login */}
-          {!isAuthenticated ? (
-            <Login onLogin={handleLogin} />
-          ) : (
-            <>
-              {/* Header */}
-              <header className="bg-blue-600 shadow-sm border-b">
-                <div className="max-w-7xl mx-auto px-4 py-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="bg-white p-2 rounded-lg shadow-md">
-                        <img 
-                          src="/img/micama.jpg" 
-                          alt="MiCama Logo" 
-                          className="h-12 w-12 object-contain"
-                        />
-                      </div>
-                      <div className="hidden-mobile">
-                        <h1 className="text-3xl font-bold text-white flex items-center gap-2">
-                          Sistema de Inventario
-                          <span className="text-yellow-300">✨</span>
-                        </h1>
-                        <p className="text-blue-100">Bienvenido, <span className="text-yellow-300 font-semibold">{currentUser?.email}</span></p>
-                      </div>
-                      <div className="show-mobile">
-                        <h1 className="text-xl font-bold text-white">
-                          MiCama ✨
-                        </h1>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => setCurrentView('inventory')}
-                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
-                            currentView === 'inventory' 
-                              ? 'gold-gradient text-white shadow-lg transform scale-105' 
-                              : 'bg-white/20 text-white hover:bg-white/30'
-                          }`}
-                        >
-                          <Package className="w-4 h-4" />
-                          <span className="hidden-mobile">Inventario</span>
-                        </button>
-                        <button
-                          onClick={() => setCurrentView('sales')}
-                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
-                            currentView === 'sales' 
-                              ? 'gold-gradient text-white shadow-lg transform scale-105' 
-                              : 'bg-white/20 text-white hover:bg-white/30'
-                          }`}
-                        >
-                          <ShoppingCart className="w-4 h-4" />
-                          <span className="hidden-mobile">Ventas</span>
-                        </button>
-                        <button
-                          onClick={() => setCurrentView('dashboard')}
-                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
-                            currentView === 'dashboard' 
-                              ? 'gold-gradient text-white shadow-lg transform scale-105' 
-                              : 'bg-white/20 text-white hover:bg-white/30'
-                          }`}
-                        >
-                          <TrendingUp className="w-4 h-4" />
-                          <span className="hidden-mobile">Dashboard</span>
-                        </button>
-                        <button
-                          onClick={() => setCurrentView('reservations')}
-                          className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center gap-2 ${
-                            currentView === 'reservations' 
-                              ? 'gold-gradient text-white shadow-lg transform scale-105' 
-                              : 'bg-white/20 text-white hover:bg-white/30'
-                          }`}
-                        >
-                          <Calendar className="w-4 h-4" />
-                          <span className="hidden-mobile">Reservas</span>
-                        </button>
-                      </div>
-                      <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-2 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-300 shadow-lg hover:shadow-xl"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        <span className="hidden-mobile">Cerrar Sesión</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </header>
-              
-              {/* Main content con skeleton loading */}
-              <main className="max-w-7xl mx-auto px-4 py-6">
-                {!isInitialized || isLoading ? (
-                  <SkeletonLoader />
-                ) : (
-                  <div className="gpu-accelerated">
-        {/* Filtros de fecha para todas las vistas */}
-        <div className="mb-6 bg-white rounded-xl shadow-lg card-shadow p-6 gold-accent animate-fade-in">
-          <div className="flex flex-wrap gap-4 items-center">
-            <div className="flex items-center gap-3">
-              <div className="p-2 gold-gradient rounded-lg">
-                <Calendar className="w-5 h-5 text-white" />
+      {/* Header */}
+      <header className="bg-blue-600 shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center h-16">
+            <div className="flex items-center">
+              <div className="bg-white rounded-full p-2 mr-3">
+                <Package className="h-6 w-6 text-blue-600" />
               </div>
-              <span className="text-lg font-semibold text-gray-800">Filtrar por fecha:</span>
+              <div>
+                <h1 className="text-xl font-bold text-white">Sistema de Inventario ✨</h1>
+                <p className="text-sm text-blue-100">Bienvenido, {user?.email}</p>
+              </div>
             </div>
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(e.target.value)}
-              className="px-4 py-3 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300 hover:border-blue-300"
-            >
-              {years.map(year => (
-                <option key={year.value} value={year.value}>{year.label}</option>
-              ))}
-            </select>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="px-4 py-3 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300 hover:border-blue-300"
-            >
-              {months.map(month => (
-                <option key={month.value} value={month.value}>{month.label}</option>
-              ))}
-            </select>
-            {selectedMonth !== 'all' && (
-              <select
-                value={selectedDay}
-                onChange={(e) => setSelectedDay(e.target.value)}
-                className="px-4 py-3 border-2 border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300 hover:border-blue-300"
+            
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => setCurrentView('inventory')}
+                className={`px-4 py-2 rounded-md text-sm font-medium ${
+                  currentView === 'inventory'
+                    ? 'bg-yellow-500 text-white'
+                    : 'bg-blue-500 text-white hover:bg-blue-400'
+                }`}
               >
-                {getDaysInMonth().map(day => (
-                  <option key={day.value} value={day.value}>{day.label}</option>
-                ))}
-              </select>
+                📦 Inventario
+              </button>
+              <button
+                onClick={() => setCurrentView('sales')}
+                className={`px-4 py-2 rounded-md text-sm font-medium ${
+                  currentView === 'sales'
+                    ? 'bg-yellow-500 text-white'
+                    : 'bg-blue-500 text-white hover:bg-blue-400'
+                }`}
+              >
+                🛒 Ventas
+              </button>
+              <button
+                onClick={() => setCurrentView('dashboard')}
+                className={`px-4 py-2 rounded-md text-sm font-medium ${
+                  currentView === 'dashboard'
+                    ? 'bg-yellow-500 text-white'
+                    : 'bg-blue-500 text-white hover:bg-blue-400'
+                }`}
+              >
+                📊 Dashboard
+              </button>
+              <button
+                onClick={handleLogout}
+                className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 text-sm font-medium"
+              >
+                🚪 Cerrar Sesión
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* Date Filter */}
+      <div className="bg-orange-100 border-l-4 border-orange-500 px-4 py-3">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-wrap gap-4 items-center">
+            {currentView === 'inventory' && (
+              <div className="flex items-center space-x-2">
+                <Calendar className="w-4 h-4 text-orange-600" />
+                <span className="text-sm font-medium text-orange-800">Filtrar por fecha:</span>
+                <select
+                  value={inventoryDateFilter}
+                  onChange={(e) => setInventoryDateFilter(e.target.value)}
+                  className="text-sm border border-orange-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
+                >
+                  <option value="2025">2025</option>
+                  {dateFilters.map(filter => (
+                    <option key={filter.value} value={filter.value}>
+                      {filter.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className="text-sm border border-orange-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
+                >
+                  <option>Todos los meses</option>
+                </select>
+              </div>
             )}
-            {selectedMonth !== 'all' && (
-              <span className="text-sm gold-gradient text-white px-4 py-2 rounded-full font-medium shadow-md">
-                📊 {currentView === 'inventory' ? 'Inventario' : currentView === 'sales' ? 'Ventas' : 'Datos'} de {selectedDay !== 'all' ? `día ${parseInt(selectedDay)} de ` : ''}{months.find(m => m.value === selectedMonth)?.label} {selectedYear}
-              </span>
+            
+            {currentView === 'sales' && (
+              <div className="flex items-center space-x-2">
+                <Calendar className="w-4 h-4 text-orange-600" />
+                <span className="text-sm font-medium text-orange-800">Filtrar por fecha:</span>
+                <select
+                  value={salesDateFilter}
+                  onChange={(e) => setSalesDateFilter(e.target.value)}
+                  className="text-sm border border-orange-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-orange-500 bg-white"
+                >
+                  {dateFilters.map(filter => (
+                    <option key={filter.value} value={filter.value}>
+                      {filter.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )}
           </div>
         </div>
+      </div>
 
+
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Inventory View */}
         {currentView === 'inventory' && (
-          <>
-            <div className="mb-6 flex flex-wrap gap-4 items-center justify-between filter-controls">
-              <div className="flex gap-4 items-center">
-                <div className="relative">
-                  <Search className="w-5 h-5 absolute left-3 top-3 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Buscar por nombre, código o proveedor..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-               <select
-  value={selectedCategory}
-  onChange={(e) => setSelectedCategory(e.target.value)}
-  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
->
-  {categories.map(cat => (
-    <option key={cat.value} value={cat.value}>{cat.label}</option>
-  ))}
-</select>
-<select
-  value={selectedSize}
-  onChange={(e) => setSelectedSize(e.target.value)}
-  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
->
-  {(selectedCategory === 'Almohada' ? pillowSizes : sizes).map(size => (
-    <option key={size.value} value={size.value}>{size.label}</option>
-  ))}
-</select>
-<select
-  value={selectedLocation}
-  onChange={(e) => setSelectedLocation(e.target.value)}
-  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
->
-  {getUniqueLocations().map(location => (
-    <option key={location.value} value={location.value}>{location.label}</option>
-  ))}
-</select>
-<select
-  value={selectedAgeGroup}
-  onChange={(e) => setSelectedAgeGroup(e.target.value)}
-  className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
->
-  {ageGroups.map(group => (
-    <option key={group.value} value={group.value}>{group.label}</option>
-  ))}
-</select>
-              </div>
-              <div className="flex gap-3 action-buttons">
+          <div>
+            {/* Inventory Header */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+              <h2 className="text-2xl font-bold text-gray-900">Inventario</h2>
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={exportToTXT}
-                  className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 transition-all duration-300 hover-lift shadow-lg"
+                  className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 flex items-center text-sm"
                 >
-                  <Download className="w-5 h-5" />
-                  Exportar TXT
+                  <Download className="w-4 h-4 mr-2" />
+                  Exportar
                 </button>
                 <button
                   onClick={() => setIsModalOpen(true)}
-                  className="px-6 py-3 gold-gradient text-white rounded-lg hover:shadow-xl flex items-center gap-2 transition-all duration-300 hover-lift shadow-lg"
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center text-sm"
                 >
-                  <Plus className="w-5 h-5" />
-                  Nuevo Artículo
+                  <Plus className="w-4 h-4 mr-2" />
+                  Agregar Producto
                 </button>
               </div>
             </div>
 
-            <div className="mb-4 text-sm text-gray-600">
-              Mostrando {filteredInventory.length} de {safeInventory.length} artículos
-              {selectedMonth !== 'all' && ` (ingresados en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear})`}
+            {/* Search and Filters */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+              <div className="flex flex-wrap gap-4 items-center mb-4">
+                <div className="flex-1 min-w-64">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nombre o categoría"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-48"
+                >
+                  <option value="">Todas las categorías</option>
+                  {categorias.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+                
+                <select
+                  value={sizeFilter}
+                  onChange={(e) => setSizeFilter(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-48"
+                >
+                  <option value="">Todos los tamaños</option>
+                  {[...tamaños, ...tamañosAlmohadas].map(size => (
+                    <option key={size} value={size}>{size}</option>
+                  ))}
+                </select>
+                
+                <select
+                  value={locationFilter}
+                  onChange={(e) => setLocationFilter(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-48"
+                >
+                  <option value="">Todas las ubicaciones</option>
+                  {ubicaciones.map(ubicacion => (
+                    <option key={ubicacion} value={ubicacion}>{ubicacion}</option>
+                  ))}
+                </select>
+                
+                <select
+                  value={ageGroupFilter}
+                  onChange={(e) => setAgeGroupFilter(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 min-w-48"
+                >
+                  <option value="">Todas las edades</option>
+                  {gruposEdad.map(grupo => (
+                    <option key={grupo} value={grupo}>{grupo}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <div className="text-sm text-gray-600">
+                  Mostrando {filteredInventory.length} de {inventory.length} artículos
+                </div>
+              </div>
             </div>
 
-            {/* Vista de cards tipo dashboard para desktop */}
-            <div className="hidden-mobile">
-              {filteredInventory.length === 0 ? (
-                <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-                  {isLoading ? 'Cargando inventario...' : 'No hay productos que coincidan con los filtros'}
+            {/* Grid de productos como en la imagen - Desktop */}
+            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {filteredInventory.map((item) => (
+                <div key={item.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                  {/* Ícono del producto */}
+                  <div className="flex items-center mb-3">
+                    <div className="bg-blue-100 rounded-lg p-2 mr-3">
+                      <Package className="h-6 w-6 text-blue-600" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-medium text-gray-900 product-title-multiline">{item.nombre}</h3>
+                      <p className="text-sm text-gray-500">{item.categoria}</p>
+                    </div>
+                  </div>
+                  
+                  {/* Información del producto */}
+                  <div className="space-y-2 mb-4">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Categoría:</span>
+                      <span className="font-medium">{item.categoria}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Stock:</span>
+                      <span className={`font-medium ${
+                        item.cantidadstock === 0 ? 'text-red-600' : 
+                        item.cantidadstock < 5 ? 'text-yellow-600' : 'text-green-600'
+                      }`}>
+                        {item.cantidadstock} {item.cantidadstock === 0 && '⚠️'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Precio:</span>
+                      <span className="font-medium text-green-600">
+                        ${item.precioventa?.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Tamaño:</span>
+                      <span className="font-medium">{item.tamaño}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Estado:</span>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        item.cantidadstock === 0 ? 'bg-red-100 text-red-800' :
+                        item.cantidadstock < 5 ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-green-100 text-green-800'
+                      }`}>
+                        {item.cantidadstock === 0 ? 'vendido' :
+                         item.cantidadstock < 5 ? 'bajo stock' : 'disponible'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  {/* Botones de acción */}
+                  <div className="flex justify-between items-center pt-3 border-t border-gray-100">
+                    <button
+                      onClick={() => {
+                        setSelectedInventoryDetails(item);
+                        setIsInventoryDetailsModalOpen(true);
+                      }}
+                      className="text-gray-600 hover:text-gray-800 p-1"
+                      title="Ver detalles"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => sellItem(item)}
+                      className="text-green-600 hover:text-green-800 p-1"
+                      disabled={item.cantidadstock === 0}
+                      title="Vender producto"
+                    >
+                      <DollarSign className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => editItem(item)}
+                      className="text-blue-600 hover:text-blue-800 p-1"
+                      title="Editar producto"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm('¿Estás seguro de que deseas eliminar este producto?')) {
+                          deleteItem(item.id);
+                        }
+                      }}
+                      className="text-red-600 hover:text-red-800 p-1"
+                      title="Eliminar producto"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
+              ))}
+            </div>
+
+            {/* Inventory Grid - Mobile */}
+            <div className="md:hidden">
+              {filteredInventory.length > 0 ? (
+                filteredInventory.map((item) => (
+                  <MobileInventoryCard key={item.id} item={item} />
+                ))
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {sortPillowsByDimensions(filteredInventory).map((item) => {
-                    if (!item || !item.id) return null;
-                    
-                    return (
-                      <div key={item.id} className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
-                        <div className="flex items-center mb-4">
-                          <Package className="w-8 h-8 text-blue-600" />
-                          <div className="ml-4 flex-1 min-w-0">
-                            <p className="text-lg font-bold text-gray-900 truncate">{item.nombre}</p>
-                            <p className="text-sm text-gray-500">{item.categoria}</p>
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-500">Categoría:</span>
-                            <span className="text-sm font-medium text-gray-900 capitalize">
-                              {item.categoria?.replace('_', ' ') || 'Sin categoría'}
-                            </span>
-                          </div>
-                          
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-500">Stock:</span>
-                            <div className="flex items-center">
-                              <span className="text-sm font-medium text-gray-900">{item.cantidadstock || 0}</span>
-                              {(item.cantidadstock || 0) <= (item.stockminimo || 0) && (
-                                <AlertTriangle className="w-4 h-4 text-red-500 ml-2" />
-                              )}
-                            </div>
-                          </div>
-                          
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-500">Precio:</span>
-                            <span className="text-lg font-bold text-green-600">
-                              ${(item.precioventa || 0).toLocaleString()}
-                            </span>
-                          </div>
-                          
-                          {item.tamaño && (
-                            <div className="flex justify-between items-center">
-                              <span className="text-sm text-gray-500">Tamaño:</span>
-                              <span className="text-sm font-medium text-gray-900">{item.tamaño}</span>
-                            </div>
-                          )}
-                          
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-500">Estado:</span>
-                            <span className={`px-2 py-1 text-xs rounded-full ${
-                              item.estado === 'disponible' ? 'bg-green-100 text-green-800' :
-                              item.estado === 'reservado' ? 'bg-yellow-100 text-yellow-800' :
-                              item.estado === 'vendido' ? 'bg-gray-100 text-gray-800' :
-                              'bg-red-100 text-red-800'
-                            }`}>
-                              {item.estado || 'Sin estado'}
-                            </span>
-                          </div>
-                        </div>
-                        
-                        <div className="mt-4 pt-4 border-t border-gray-200">
-                          <div className="flex justify-center gap-3">
-                            <button
-                              onClick={() => sellItem(item)}
-                              disabled={(item.cantidadstock || 0) <= 0}
-                              className={`p-2 rounded-lg ${
-                                (item.cantidadstock || 0) > 0 
-                                  ? 'text-green-600 hover:bg-green-50' 
-                                  : 'text-gray-400 cursor-not-allowed'
-                              }`}
-                              title="Vender"
-                            >
-                              <DollarSign className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => {
-                                setReservingItem(item);
-                                setReservationData({
-                                  cantidadReservada: '',
-                                  valorReserva: 0,
-                                  cliente: '',
-                                  telefono: '',
-                                  notas: ''
-                                });
-                                setIsReservationModalOpen(true);
-                              }}
-                              className="p-2 rounded-lg text-purple-600 hover:bg-purple-50"
-                              title="Reservar"
-                            >
-                              <Calendar className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => editItem(item)}
-                              className="p-2 rounded-lg text-blue-600 hover:bg-blue-50"
-                              title="Editar"
-                            >
-                              <Edit2 className="w-5 h-5" />
-                            </button>
-                            <button
-                              onClick={() => deleteItem(item.id)}
-                              className="p-2 rounded-lg text-red-600 hover:bg-red-50"
-                              title="Eliminar"
-                            >
-                              <Trash2 className="w-5 h-5" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="text-center py-8">
+                  <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No se encontraron productos</p>
                 </div>
               )}
             </div>
-
-            {/* Vista de cards para móvil */}
-            <div className="block md:hidden">
-              {filteredInventory.length === 0 ? (
-                <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-                  {isLoading ? 'Cargando inventario...' : 'No hay productos que coincidan con los filtros'}
-                </div>
-              ) : (
-                <div>
-                  {sortPillowsByDimensions(filteredInventory).map((item) => {
-                    if (!item || !item.id) return null;
-                    return <MobileInventoryCard 
-                      key={item.id} 
-                      item={item} 
-                      sellItem={sellItem}
-                      editItem={editItem}
-                      deleteItem={deleteItem}
-                    />;
-                  })}
-                </div>
-              )}
-            </div>
-          </>
+          </div>
         )}
 
+        {/* Sales View */}
         {currentView === 'sales' && (
-          <>
-
-
-            <div className="mb-4 text-sm text-gray-600">
-              Mostrando {filteredSales.length} de {safeSales.length} ventas
-              {selectedMonth !== 'all' && (
-                ` (realizadas ${selectedDay !== 'all' ? `el día ${parseInt(selectedDay)} de ` : 'en '}${months.find(m => m.value === selectedMonth)?.label} ${selectedYear})`
-              )}
+          <div>
+            {/* Ganancias por Día */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+              <div className="flex items-center mb-4">
+                <div className="bg-green-100 p-2 rounded-lg mr-3">
+                  <DollarSign className="w-6 h-6 text-green-600" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Ganancias por Día</h2>
+              </div>
+              
+              {/* Stats Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+                  <div className="flex items-center mb-2">
+                    <DollarSign className="w-5 h-5 text-green-600 mr-2" />
+                    <span className="text-sm font-medium text-green-800">Total Ganancias</span>
+                  </div>
+                  <p className="text-2xl font-bold text-green-900">${totalSales.toLocaleString()}</p>
+                </div>
+                
+                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                  <div className="flex items-center mb-2">
+                    <TrendingUp className="w-5 h-5 text-blue-600 mr-2" />
+                    <span className="text-sm font-medium text-blue-800">Promedio Diario</span>
+                  </div>
+                  <p className="text-2xl font-bold text-blue-900">${uniqueSalesDays > 0 ? Math.round(totalSales / uniqueSalesDays).toLocaleString() : '0'}</p>
+                </div>
+                
+                <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
+                  <div className="flex items-center mb-2">
+                    <Package className="w-5 h-5 text-orange-600 mr-2" />
+                    <span className="text-sm font-medium text-orange-800">Días con Ventas</span>
+                  </div>
+                  <p className="text-2xl font-bold text-orange-900">{uniqueSalesDays}</p>
+                </div>
+              </div>
             </div>
-            
-            <div className="mb-6 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-gray-900">Historial de Ventas</h2>
-              <div className="flex gap-2">
+
+            {/* Desglose Diario */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+              <div className="flex items-center mb-4">
+                <div className="bg-blue-100 p-2 rounded-lg mr-3">
+                  <Calendar className="w-6 h-6 text-blue-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">Desglose Diario</h3>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
+                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                  <div className="flex items-center mb-2">
+                    <Calendar className="w-5 h-5 text-blue-600 mr-2" />
+                    <span className="text-sm font-medium text-blue-800">Hoy - {new Date().toLocaleDateString('es-ES')}</span>
+                  </div>
+                  <p className="text-2xl font-bold text-blue-900">${dailyEarnings.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Sales Search and Filters */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="md:col-span-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-blue-400 w-5 h-5" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nombre..."
+                      value={salesSearchTerm}
+                      onChange={(e) => setSalesSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    />
+                  </div>
+                </div>
+                
                 <select
-                  value={salesSort}
-                  onChange={(e) => setSalesSort(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  value={salesCategoryFilter}
+                  onChange={(e) => setSalesCategoryFilter(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                 >
-                  <option value="todos">Mostrar Todos</option>
-                  <option value="fecha">Ordenar por Fecha</option>
-                  <option value="cliente">Ordenar por Cliente</option>
+                  <option value="">Todas las categorías</option>
+                  {categorias.map(cat => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
                 </select>
+                
                 <button
                   onClick={exportSalesToTXT}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                  className="bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 flex items-center justify-center text-sm font-medium transition-colors"
                 >
-                  <Download className="w-4 h-4" />
+                  <Download className="w-4 h-4 mr-2" />
                   Exportar TXT
                 </button>
               </div>
             </div>
 
-            {/* Sección de ganancias diarias - Desktop */}
-            {filteredSales.length > 0 && (() => {
-              const stats = getDailyEarningsStats();
-              const dailyEarnings = stats.dailyEarnings;
-              const sortedDates = Object.keys(dailyEarnings).sort((a, b) => 
-                new Date(b.split('/').reverse().join('-')) - new Date(a.split('/').reverse().join('-'))
-              );
-              
-              return (
-                <div className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl shadow-lg p-6 border border-green-200 hidden-mobile">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-green-600 rounded-lg">
-                      <DollarSign className="w-5 h-5 text-white" />
-                    </div>
-                    <h3 className="text-lg font-bold text-green-800">Ganancias por Día</h3>
-                  </div>
-                  
-                  {/* Estadísticas generales */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-                    <div className="bg-white p-6 rounded-lg shadow">
-                      <div className="flex items-center">
-                        <DollarSign className="w-8 h-8 text-green-600" />
-                        <div className="ml-4">
-                          <p className="text-sm font-medium text-gray-500">Total Ganancias</p>
-                          <p className="text-2xl font-bold text-gray-900">${stats.totalEarnings.toLocaleString()}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="bg-white p-6 rounded-lg shadow">
-                      <div className="flex items-center">
-                        <TrendingUp className="w-8 h-8 text-blue-600" />
-                        <div className="ml-4">
-                          <p className="text-sm font-medium text-gray-500">Promedio Diario</p>
-                          <p className="text-2xl font-bold text-gray-900">${stats.averageDaily.toLocaleString()}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="bg-white p-6 rounded-lg shadow">
-                      <div className="flex items-center">
-                        <Calendar className="w-8 h-8 text-purple-600" />
-                        <div className="ml-4">
-                          <p className="text-sm font-medium text-gray-500">Mejor Día</p>
-                          <p className="text-2xl font-bold text-gray-900">{stats.bestDay}</p>
-                          <p className="text-xs text-gray-400">${dailyEarnings[stats.bestDay]?.toLocaleString()}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="bg-white p-6 rounded-lg shadow">
-                      <div className="flex items-center">
-                        <BarChart3 className="w-8 h-8 text-orange-600" />
-                        <div className="ml-4">
-                          <p className="text-sm font-medium text-gray-500">Días con Ventas</p>
-                          <p className="text-2xl font-bold text-gray-900">{stats.totalDays}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Desglose Diario tipo Dashboard */}
-                  <div className="space-y-4">
-                    <h4 className="font-semibold text-gray-800 mb-4 flex items-center">
-                      <Calendar className="w-5 h-5 text-blue-600 mr-2" />
-                      Desglose Diario
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-h-96 overflow-y-auto">
-                      {sortedDates.map(date => {
-                        const earnings = dailyEarnings[date];
-                        const isTopDay = date === stats.bestDay;
-                        
-                        return (
-                          <div key={date} className="bg-white p-6 rounded-lg shadow">
-                            <div className="flex items-center">
-                              <Calendar className={`w-8 h-8 ${
-                                isTopDay ? 'text-purple-600' : 'text-blue-600'
-                              }`} />
-                              <div className="ml-4">
-                                <p className="text-sm font-medium text-gray-500">{date}</p>
-                                <p className={`text-2xl font-bold ${
-                                  isTopDay ? 'text-purple-600' : 'text-green-600'
-                                }`}>
-                                  ${earnings.toLocaleString()}
-                                </p>
-                                {isTopDay && (
-                                  <p className="text-xs text-purple-400">Mejor día</p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-
-            {/* Versión móvil de ganancias diarias */}
-            {filteredSales.length > 0 && (() => {
-              const stats = getDailyEarningsStats();
-              
-              return (
-                <div className="mb-6 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl shadow-lg p-4 border border-green-200 show-mobile">
-                  <div className="flex items-center gap-2 mb-3">
-                    <DollarSign className="w-5 h-5 text-green-600" />
-                    <h3 className="text-lg font-bold text-green-800">Ganancias</h3>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-white rounded-lg p-3 text-center">
-                      <p className="text-xs text-gray-600">Total</p>
-                      <p className="text-lg font-bold text-green-600">${stats.totalEarnings.toLocaleString()}</p>
-                    </div>
-                    <div className="bg-white rounded-lg p-3 text-center">
-                      <p className="text-xs text-gray-600">Promedio</p>
-                      <p className="text-lg font-bold text-blue-600">${stats.averageDaily.toLocaleString()}</p>
-                    </div>
-                  </div>
-                  
-                  {stats.bestDay && (
-                    <div className="mt-3 bg-white rounded-lg p-3 text-center">
-                      <p className="text-xs text-gray-600">Mejor día: {stats.bestDay}</p>
-                      <p className="text-lg font-bold text-purple-600">${stats.dailyEarnings[stats.bestDay]?.toLocaleString()}</p>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-            
-            {/* Vista de tarjetas tipo dashboard para desktop */}
-            <div className="hidden md:block">
-              {filteredSales.length === 0 ? (
-                <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-                  {selectedMonth !== 'all' 
-                    ? `No hay ventas registradas en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`
-                    : 'No hay ventas registradas'
-                  }
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {getSortedSales(filteredSales).map((sale) => {
-                    return (
-                      <div 
-                        key={sale.id} 
-                        className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow cursor-pointer"
-                        onClick={() => openSaleDetails(sale)}
-                      >
-                        {/* Header con icono y información principal */}
-                        <div className="flex items-center mb-4">
-                          <Package className="w-8 h-8 text-blue-600" />
-                          <div className="ml-4 flex-1 min-w-0">
-                            <p className="text-lg font-bold text-gray-900 truncate">{sale.nombre}</p>
-                            <p className="text-sm text-gray-500">
-                              {new Date(sale.fecha_venta).toLocaleDateString('es-ES')}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xl font-bold text-green-600">${sale.total_venta?.toLocaleString()}</p>
-                          </div>
-                        </div>
-
-                        {/* Información del producto */}
-                        <div className="space-y-3 mb-4">
-                          <div className="flex items-center">
-                            <Tag className="w-5 h-5 text-purple-600 mr-2" />
-                            <div className="flex-1">
-                              <p className="text-xs text-gray-500">Categoría • Tamaño</p>
-                              <p className="text-sm font-medium text-gray-900">{sale.categoria} • {sale.tamaño}</p>
-                            </div>
-                          </div>
-                          
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="flex items-center">
-                              <Hash className="w-4 h-4 text-blue-600 mr-2" />
-                              <div>
-                                <p className="text-xs text-gray-500">Cantidad</p>
-                                <p className="text-sm font-medium text-gray-900">{sale.cantidad_vendida}</p>
-                              </div>
-                            </div>
-                            
-                            <div className="flex items-center">
-                              <DollarSign className="w-4 h-4 text-green-600 mr-2" />
-                              <div>
-                                <p className="text-xs text-gray-500">Precio Unit.</p>
-                                <p className="text-sm font-medium text-gray-900">CLP {sale.precio_venta?.toLocaleString()}</p>
-                              </div>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center">
-                            <CreditCard className="w-4 h-4 text-indigo-600 mr-2" />
-                            <div className="flex-1">
-                              <p className="text-xs text-gray-500">Método de Pago</p>
-                              <p className="text-sm font-medium text-gray-900 capitalize">{sale.metodo_pago}</p>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center">
-                            <User className="w-4 h-4 text-teal-600 mr-2" />
-                            <div className="flex-1">
-                              <p className="text-xs text-gray-500">Cliente</p>
-                              <p className="text-sm font-medium text-gray-900 truncate">{(() => {
-                                if (!sale.notas) return 'Cliente no especificado';
-                                const clientMatch = sale.notas.match(/Cliente:\s*([^,\n]+)/);
-                                return clientMatch ? clientMatch[1].trim() : 'Cliente no especificado';
-                              })()}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Botones de acción */}
-                        <div className="flex justify-end space-x-2 pt-4 border-t border-gray-200">
-                          <button
-                            onClick={(e) => { 
-                              e.stopPropagation(); 
-                              deleteSale(sale.id); 
-                            }}
-                            className="flex items-center px-3 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                            title="Eliminar venta"
-                          >
-                            <Trash2 className="w-4 h-4 mr-1" />
-                            Eliminar
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Vista de cards para móvil */}
-            <div className="show-mobile">
-              {filteredSales.length === 0 ? (
-                <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-                  {selectedMonth !== 'all' 
-                    ? `No hay ventas registradas en ${months.find(m => m.value === selectedMonth)?.label} ${selectedYear}`
-                    : 'No hay ventas registradas'
-                  }
-                </div>
-              ) : (
-                <div>
-                  {getSortedSales(filteredSales).map((sale) => (
-                    <MobileSalesCard 
-                      key={sale.id} 
-                      sale={sale} 
-                      deleteSale={deleteSale}
-                      onSaleClick={openSaleDetails}
-                      openEditSale={openEditSale}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          </>
-        )}
-                
-        {currentView === 'dashboard' && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <Package className="w-8 h-8 text-blue-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Total Artículos</p>
-                    <p className="text-2xl font-bold text-gray-900">{totalItems}</p>
-                    {selectedMonth !== 'all' && (
-                      <p className="text-xs text-gray-400">En {months.find(m => m.value === selectedMonth)?.label} {selectedYear}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <TrendingUp className="w-8 h-8 text-green-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Valor Inventario</p>
-                    <p className="text-2xl font-bold text-gray-900">${totalValue.toLocaleString()}</p>
-                    {selectedMonth !== 'all' && (
-                      <p className="text-xs text-gray-400">En {months.find(m => m.value === selectedMonth)?.label} {selectedYear}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <DollarSign className="w-8 h-8 text-purple-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Total Ventas</p>
-                    <p className="text-2xl font-bold text-gray-900">${totalSales.toLocaleString()}</p>
-                    {selectedMonth !== 'all' && (
-                      <p className="text-xs text-gray-400">En {months.find(m => m.value === selectedMonth)?.label} {selectedYear}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <AlertTriangle className="w-8 h-8 text-red-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Stock Bajo</p>
-                    <p className="text-2xl font-bold text-gray-900">{lowStockItems.length}</p>
-                    {selectedMonth !== 'all' && (
-                      <p className="text-xs text-gray-400">Ingresados en {months.find(m => m.value === selectedMonth)?.label} {selectedYear}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {currentView === 'reservations' && (
-          <div className="space-y-6">
-            {/* Estadísticas de reservas - ya están en estilo dashboard */}
+            {/* Sales Products Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <Calendar className="w-8 h-8 text-blue-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Total Reservas</p>
-                    <p className="text-2xl font-bold text-gray-900">{reservations.length}</p>
+              {sortedSales.map((sale) => (
+                <div key={sale.id} className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="bg-blue-100 p-2 rounded-lg">
+                      <Package className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <span className="text-xs text-gray-500">{new Date(sale.fecha_venta).toLocaleDateString('es-ES')}</span>
+                  </div>
+                  
+                  <h3 className="font-bold text-gray-900 mb-1">{sale.nombre}</h3>
+                  <p className="text-2xl font-bold text-green-600 mb-2">${sale.total_venta?.toLocaleString()}</p>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Categoría • Tamaño</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-900">{sale.categoria} • {sale.tamaño || 'N/A'}</span>
+                    </div>
+                    
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                      <div className="flex items-center">
+                        <span className="text-blue-600 mr-1">#</span>
+                        <span className="text-sm font-medium">Cantidad</span>
+                        <span className="text-green-600 ml-2">{sale.cantidad_vendida}</span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="text-green-600 mr-1">$</span>
+                        <span className="text-sm font-medium">Precio Unit.</span>
+                        <span className="text-green-600 ml-2">${sale.precio_venta?.toLocaleString()}</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex justify-between pt-2">
+                      <span className="text-gray-600">Método de Pago</span>
+                    </div>
+                    <div className="text-gray-900 capitalize font-medium">{sale.metodo_pago}</div>
+                  </div>
+                  
+                  <div className="flex justify-between items-center pt-4 border-t border-gray-100 mt-4">
+                    <button
+                      onClick={() => openSaleDetails(sale)}
+                      className="text-blue-600 hover:text-blue-800 p-1 rounded transition-colors"
+                      title="Ver detalles"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => openEditSale(sale)}
+                      className="text-orange-600 hover:text-orange-800 p-1 rounded transition-colors"
+                      title="Editar venta"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm('¿Estás seguro de que deseas eliminar esta venta?')) {
+                          deleteSale(sale.id);
+                        }
+                      }}
+                      className="text-red-600 hover:text-red-800 p-1 rounded transition-colors"
+                      title="Eliminar venta"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-              </div>
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <DollarSign className="w-8 h-8 text-orange-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Valor Total</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      CLP {reservations.reduce((sum, r) => sum + (parseFloat(r.valor_reserva) || 0), 0).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <CheckCircle className="w-8 h-8 text-green-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Activas</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {reservations.filter(r => r.estado === 'activa').length}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-lg shadow">
-                <div className="flex items-center">
-                  <XCircle className="w-8 h-8 text-red-600" />
-                  <div className="ml-4">
-                    <p className="text-sm font-medium text-gray-500">Canceladas</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {reservations.filter(r => r.estado === 'cancelada').length}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              ))}
             </div>
 
-            {/* Filtros */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">Gestión de Reservas</h2>
-                <div className="flex gap-4">
-                  <select
-                    value={reservationFilter}
-                    onChange={(e) => setReservationFilter(e.target.value)}
-                    className="px-4 py-2 border border-gray-300 rounded-lg"
-                  >
-                    <option value="all">Todas las reservas</option>
-                    <option value="activa">Activas</option>
-                    <option value="confirmada">Confirmadas</option>
-                    <option value="cancelada">Canceladas</option>
-                  </select>
-                  <select
-                    value={reservationSort}
-                    onChange={(e) => setReservationSort(e.target.value)}
-                    className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="fecha">Ordenar por Fecha</option>
-                    <option value="cliente">Ordenar por Cliente</option>
-                    <option value="producto">Ordenar por Producto</option>
-                    <option value="valor">Ordenar por Valor</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Vista de cards tipo dashboard para reservas */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {sortPillowsByDimensions(
-                  reservations
-                    .filter(reservation => reservationFilter === 'all' || reservation.estado === reservationFilter)
-                )
-                  .sort((a, b) => {
-                    switch (reservationSort) {
-                      case 'cliente':
-                        return a.cliente.localeCompare(b.cliente, 'es', { sensitivity: 'base' });
-                      case 'producto':
-                        const productA = inventory.find(item => item.id === a.inventory_id);
-                        const productB = inventory.find(item => item.id === b.inventory_id);
-                        return (productA?.nombre || '').localeCompare(productB?.nombre || '', 'es', { sensitivity: 'base' });
-                      case 'valor':
-                        return (b.valor_reserva || 0) - (a.valor_reserva || 0);
-                      case 'fecha':
-                      default:
-                        return new Date(b.fecha_reserva) - new Date(a.fecha_reserva);
-                    }
-                  })
-                  .map((reservation) => {
-                    const product = inventory.find(item => item.id === reservation.inventory_id);
-                    return (
-                      <div key={reservation.id} className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition-shadow">
-                        <div className="flex items-center mb-4">
-                          <Calendar className="w-8 h-8 text-blue-600" />
-                          <div className="ml-4 flex-1 min-w-0">
-                            <p className="text-lg font-bold text-gray-900 truncate">{product?.nombre || 'Producto no encontrado'}</p>
-                            <p className="text-sm text-gray-500">{product?.categoria || 'Sin categoría'}</p>
-                          </div>
-                        </div>
-                        
-                        <div className="space-y-3">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-500">Cliente:</span>
-                            <span className="text-sm font-medium text-gray-900 truncate">{reservation.cliente}</span>
-                          </div>
-                          
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-500">Cantidad:</span>
-                            <span className="text-sm font-medium text-gray-900">{reservation.cantidad_reservada}</span>
-                          </div>
-                          
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-500">Valor:</span>
-                            <span className="text-lg font-bold text-green-600">
-                              CLP {reservation.valor_reserva?.toLocaleString()}
-                            </span>
-                          </div>
-                          
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-500">Fecha:</span>
-                            <span className="text-sm font-medium text-gray-900">
-                              {new Date(reservation.fecha_reserva).toLocaleDateString()}
-                            </span>
-                          </div>
-                          
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-500">Estado:</span>
-                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                              reservation.estado === 'activa' ? 'bg-green-100 text-green-800' :
-                              reservation.estado === 'confirmada' ? 'bg-purple-100 text-purple-800' :
-                              'bg-red-100 text-red-800'
-                            }`}>
-                              {reservation.estado}
-                            </span>
-                          </div>
-                        </div>
-                        
-                        <div className="mt-4 pt-4 border-t border-gray-200">
-                          <div className="flex justify-center gap-2">
-                            {reservation.estado === 'activa' && (
-                              <>
-                                <button
-                                  onClick={() => handleConfirmReservation(reservation.id)}
-                                  className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700"
-                                >
-                                  Confirmar
-                                </button>
-                                <button
-                                  onClick={() => handleCancelReservation(reservation.id)}
-                                  className="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
-                                >
-                                  Cancelar
-                                </button>
-                              </>
-                            )}
-                            <button
-                              onClick={() => handleDeleteReservation(reservation.id)}
-                              className="px-3 py-1 text-xs bg-red-800 text-white rounded hover:bg-red-900"
-                              title="Eliminar permanentemente"
-                            >
-                              Eliminar
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-              </div>
+            {/* Sales Grid - Mobile */}
+            <div className="md:hidden">
+              {sortedSales.map((sale) => (
+                <MobileSalesCard key={sale.id} sale={sale} />
+              ))}
             </div>
           </div>
         )}
+
+        {/* Dashboard View */}
+        {currentView === 'dashboard' && (
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Dashboard</h2>
+            
+            {/* Stats Cards - Desktop */}
+            <div className="hidden md:grid md:grid-cols-4 gap-6 mb-8">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <Package className="h-8 w-8 text-blue-600" />
                   </div>
-                )}
-              </main>
-            </>
-          )}
-        </div>
-      )}
-      
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Total Productos</p>
+                    <p className="text-2xl font-bold text-gray-900">{totalItems}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <DollarSign className="h-8 w-8 text-green-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Valor Total Inventario</p>
+                    <p className="text-2xl font-bold text-gray-900">${totalValue.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <TrendingUp className="h-8 w-8 text-purple-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Total Ventas</p>
+                    <p className="text-2xl font-bold text-gray-900">${totalSales.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <Calendar className="h-8 w-8 text-orange-600" />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-gray-500">Ventas Hoy</p>
+                    <p className="text-2xl font-bold text-gray-900">${dailyEarnings.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
 
+            {/* Stats Cards - Mobile */}
+            <div className="md:hidden grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="text-center">
+                  <Package className="h-6 w-6 text-blue-600 mx-auto mb-2" />
+                  <p className="text-xs font-medium text-gray-500">Productos</p>
+                  <p className="text-lg font-bold text-gray-900">{totalItems}</p>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="text-center">
+                  <DollarSign className="h-6 w-6 text-green-600 mx-auto mb-2" />
+                  <p className="text-xs font-medium text-gray-500">Valor Inventario</p>
+                  <p className="text-lg font-bold text-gray-900">${(totalValue/1000).toFixed(0)}K</p>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="text-center">
+                  <TrendingUp className="h-6 w-6 text-purple-600 mx-auto mb-2" />
+                  <p className="text-xs font-medium text-gray-500">Total Ventas</p>
+                  <p className="text-lg font-bold text-gray-900">${(totalSales/1000).toFixed(0)}K</p>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="text-center">
+                  <Calendar className="h-6 w-6 text-orange-600 mx-auto mb-2" />
+                  <p className="text-xs font-medium text-gray-500">Ventas Hoy</p>
+                  <p className="text-lg font-bold text-gray-900">${dailyEarnings.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
 
-      {/* Modal para agregar/editar */}
+            {/* Daily Earnings Chart - Desktop */}
+            <div className="hidden md:block bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-8">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Ventas de los últimos 7 días</h3>
+              <div className="flex items-end space-x-2 h-40">
+                {dailyStats.map((day, index) => {
+                  const maxEarnings = Math.max(...dailyStats.map(d => d.earnings));
+                  const height = maxEarnings > 0 ? (day.earnings / maxEarnings) * 100 : 0;
+                  
+                  return (
+                                         <div key={index} className="flex-1 flex flex-col items-center">
+                       <div 
+                         className="w-full bg-blue-500 rounded-t transition-all duration-300 hover:bg-blue-600 mb-2"
+                         style={{ height: `${height}%` }}
+                         title={`${day.date}: $${day.earnings.toLocaleString()}`}
+                       ></div>
+                       <div className="text-xs text-gray-600 text-center">
+                         <div className="font-medium">{day.day}</div>
+                         <div>${day.earnings.toLocaleString()}</div>
+                       </div>
+                     </div>
+                   );
+                 })}
+               </div>
+             </div>
+
+             {/* Daily Earnings Chart - Mobile */}
+             <div className="md:hidden bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
+               <h3 className="text-lg font-medium text-gray-900 mb-4">Ventas de los últimos 7 días</h3>
+               <div className="space-y-3">
+                 {dailyStats.map((day, index) => {
+                   const maxEarnings = Math.max(...dailyStats.map(d => d.earnings));
+                   const percentage = maxEarnings > 0 ? (day.earnings / maxEarnings) * 100 : 0;
+                   
+                   return (
+                     <div key={index} className="flex items-center space-x-3">
+                       <div className="w-12 text-xs text-gray-600 font-medium">{day.day}</div>
+                       <div className="flex-1 bg-gray-200 rounded-full h-4 relative">
+                         <div 
+                           className="bg-blue-500 h-4 rounded-full transition-all duration-300"
+                           style={{ width: `${percentage}%` }}
+                         ></div>
+                       </div>
+                       <div className="w-20 text-xs text-gray-900 font-medium text-right">
+                         ${day.earnings.toLocaleString()}
+                       </div>
+                     </div>
+                   );
+                 })}
+               </div>
+           </div>
+          </div>
+        )}
+      </main>
+
+      {/* Modal para agregar/editar producto */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg w-full max-w-3xl p-6 overflow-y-auto max-h-[90vh]">
-            <h2 className="text-xl font-bold mb-4">{editingItem ? 'Editar Artículo' : 'Nuevo Artículo'}</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              <h2 className="text-xl font-bold mb-4">
+                {editingItem ? 'Editar Producto' : 'Agregar Producto'}
+              </h2>
+              
+              {/* Mensaje de estado */}
+              {message.text && (
+                <div className={`alert ${message.type === 'error' ? 'alert-error' : 'alert-success'} mb-4`}>
+                  <div className="flex items-center">
+                    {message.type === 'error' ? (
+                      <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                    <span>{message.text}</span>
+                  </div>
+                </div>
+              )}
+              <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="nombre">Nombre</label>
+                  <label className="block text-sm font-medium mb-1">Nombre *</label>
                   <input
                     type="text"
-                    id="nombre"
                     value={formData.nombre}
                     onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
                     required
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Categoría</label>
+                    <select
+                      value={formData.categoria}
+                      onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Seleccionar categoría</option>
+                      {categorias.map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Grupo de Edad</label>
+                    <select
+                      value={formData.grupoedad}
+                      onChange={(e) => setFormData({ ...formData, grupoedad: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Seleccionar grupo</option>
+                      {gruposEdad.map(grupo => (
+                        <option key={grupo} value={grupo}>{grupo}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Tamaño</label>
+                    <select
+                      value={formData.tamaño}
+                      onChange={(e) => setFormData({ ...formData, tamaño: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Seleccionar tamaño</option>
+                      {getTamañosPorCategoria(formData.categoria).map(size => (
+                        <option key={size} value={size}>{size}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Color</label>
+                    <input
+                      type="text"
+                      value={formData.color}
+                      onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Stock *</label>
+                    <input
+                      type="number"
+                      value={formData.cantidadstock}
+                      onChange={(e) => setFormData({ ...formData, cantidadstock: e.target.value })}
+                      min="0"
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Precio Venta *</label>
+                    <input
+                      type="number"
+                      value={formData.precioventa}
+                      onChange={(e) => setFormData({ ...formData, precioventa: e.target.value })}
+                      min="0"
+                      step="0.01"
+                      required
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                
                 <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="categoria">Categoría</label>
+                  <label className="block text-sm font-medium mb-1">Ubicación</label>
                   <select
-                    id="categoria"
-                    value={formData.categoria}
-                    onChange={(e) => {
-                      const newCategory = e.target.value;
-                      let newSize = formData.tamaño;
-                      
-                      // Solo cambiar el tamaño si realmente cambió la categoría
-                      if (newCategory !== formData.categoria) {
-                        // Si cambia a Almohada y el tamaño actual no es válido para almohadas
-                        if (newCategory === 'Almohada' && !['40x60 cm', '50x70 cm', '50x90 cm'].includes(formData.tamaño)) {
-                          newSize = '50x70 cm'; // Solo si el tamaño actual no es válido para almohadas
-                        }
-                        // Si cambia de Almohada a otra categoría y el tamaño actual es de almohada
-                        else if (newCategory !== 'Almohada' && ['40x60 cm', '50x70 cm', '50x90 cm'].includes(formData.tamaño)) {
-                          newSize = '1 plaza'; // Solo si el tamaño actual es de almohada
-                        }
-                      }
-                      
-                      console.log('🔍 Cambio de tamaño detectado:', {
-                        tamaño_anterior: formData.tamaño,
-                        tamaño_nuevo: newSize,
-                        categoria: newCategory,
-                        categoria_anterior: formData.categoria
-                      });
-                      
-                      setFormData({ 
-                        ...formData, 
-                        categoria: newCategory,
-                        tamaño: newSize
-                      });
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {categories.slice(1).map(cat => (
-                      <option key={cat.value} value={cat.value}>{cat.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="tamaño">Tamaño</label>
-                  <select
-                    id="tamaño"
-                    value={formData.tamaño}
-                    onChange={(e) => {
-                      const newSize = e.target.value;
-                      console.log('📏 Cambio directo de tamaño:', {
-                        valor_anterior: formData.tamaño,
-                        valor_nuevo: newSize,
-                        categoria_actual: formData.categoria,
-                        timestamp: new Date().toLocaleTimeString()
-                      });
-                      
-                      // Forzar el cambio de estado de manera más explícita
-                      setFormData(prevData => {
-                        const newData = { ...prevData, tamaño: newSize };
-                        console.log('📋 Estado actualizado:', newData);
-                        return newData;
-                      });
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {(formData.categoria === 'Almohada' ? pillowSizes.filter(size => size.value !== 'all') : sizes.slice(1)).map(size => (
-                      <option key={size.value} value={size.value}>{size.label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="color">Color</label>
-                  <input
-                    type="text"
-                    id="color"
-                    value={formData.color}
-                    onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="proveedor">Proveedor</label>
-                  <input
-                    type="text"
-                    id="proveedor"
-                    value={formData.proveedor}
-                    onChange={(e) => setFormData({ ...formData, proveedor: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="cantidadStock">Cantidad en Stock</label>
-                  <input
-                    type="number"
-                    id="cantidadStock"
-                    value={formData.cantidadStock}
-                    onChange={(e) => setFormData({ ...formData, cantidadStock: e.target.value })}
-                    min="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="stockMinimo">Stock Mínimo</label>
-                  <input
-                    type="number"
-                    id="stockMinimo"
-                    value={formData.stockMinimo}
-                    onChange={(e) => setFormData({ ...formData, stockMinimo: e.target.value })}
-                    min="0"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="precioVenta">Precio de Venta</label>
-                  <input
-                    type="number"
-                    id="precioVenta"
-                    value={formData.precioVenta}
-                    onChange={(e) => setFormData({ ...formData, precioVenta: e.target.value })}
-                    min="0"
-                    step="0.01"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="ubicacion">Ubicación</label>
-                  <input
-                    type="text"
-                    id="ubicacion"
                     value={formData.ubicacion}
                     onChange={(e) => setFormData({ ...formData, ubicacion: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="fechaIngreso">Fecha de Ingreso</label>
-                  <input
-                    type="date"
-                    id="fechaIngreso"
-                    value={formData.fechaIngreso}
-                    onChange={(e) => setFormData({ ...formData, fechaIngreso: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="estado">Estado</label>
-                  <select
-                    id="estado"
-                    value={formData.estado}
-                    onChange={(e) => setFormData({ ...formData, estado: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
                   >
-                    {estados.map(estado => (
-                      <option key={estado.value} value={estado.value}>{estado.label}</option>
+                    <option value="">Seleccionar ubicación</option>
+                    {ubicaciones.map(ubicacion => (
+                      <option key={ubicacion} value={ubicacion}>{ubicacion}</option>
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="grupo_edad">Grupo de Edad</label>
-                  <select
-                    id="grupo_edad"
-                    value={formData.grupo_edad}
-                    onChange={(e) => setFormData({ ...formData, grupo_edad: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="Adulto">Adulto</option>
-                    <option value="Infantil">Infantil</option>
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium mb-1" htmlFor="descripcion">Descripción</label>
-                <textarea
-                  id="descripcion"
-                  value={formData.descripcion}
-                  onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-                  rows="3"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                ></textarea>
-              </div>
-              <div className="flex justify-end space-x-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsModalOpen(false);
-                    resetForm();
-                  }}
-                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                >
-                  {editingItem ? 'Actualizar' : 'Guardar'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal para reserva */}
-      {isReservationModalOpen && reservingItem && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
-            <div className="p-6">
-              <h2 className="text-xl font-bold mb-4">Reservar Producto</h2>
-              <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                <h3 className="font-medium text-gray-900">{reservingItem.nombre}</h3>
-                <p className="text-sm text-gray-600">{reservingItem.codigo} - {reservingItem.categoria}</p>
-                <p className="text-sm text-gray-600">Stock disponible: {reservingItem.cantidadstock}</p>
-                <p className="text-sm text-gray-600">Precio: CLP {reservingItem.precioventa}</p>
-              </div>
-              <form onSubmit={handleReservation} className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">Cantidad a reservar</label>
-                  <input
-                    type="number"
-                    value={reservationData.cantidadReservada}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === '') {
-                        handleCantidadReservadaChange('');
-                      } else {
-                        handleCantidadReservadaChange(parseInt(value) || '');
-                      }
-                    }}
-                    min="1"
-                    max={reservingItem.cantidadstock}
-                    placeholder="Ingrese cantidad"
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Valor de reserva (valor líquido)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-2 text-gray-500 text-sm">CLP</span>
-                    <input
-                      type="text"
-                      value={`CLP ${parseFloat(reservationData.valorReserva || 0).toLocaleString()}`}
-                      readOnly
-                      className="w-full pl-12 pr-10 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-                      placeholder="Se calcula automáticamente"
-                    />
-                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                      <span className="text-gray-500 text-sm">💰</span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Valor líquido total: CLP {(reservationData.cantidadReservada * parseFloat(reservingItem.precioventa || 0)).toLocaleString()}
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Cliente</label>
-                  <input
-                    type="text"
-                    value={reservationData.cliente}
-                    onChange={(e) => setReservationData({ ...reservationData, cliente: e.target.value })}
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Teléfono</label>
-                  <input
-                    type="tel"
-                    value={reservationData.telefono}
-                    onChange={(e) => setReservationData({ ...reservationData, telefono: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+                
                 <div>
                   <label className="block text-sm font-medium mb-1">Notas</label>
                   <textarea
-                    value={reservationData.notas}
-                    onChange={(e) => setReservationData({ ...reservationData, notas: e.target.value })}
-                    rows="2"
+                    value={formData.notas}
+                    onChange={(e) => setFormData({ ...formData, notas: e.target.value })}
+                    rows="3"
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   ></textarea>
                 </div>
@@ -2701,8 +1889,8 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
               <button
                 type="button"
                 onClick={() => {
-                  setIsReservationModalOpen(false);
-                  resetReservationForm();
+                  setIsModalOpen(false);
+                  resetForm();
                 }}
                 className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
               >
@@ -2710,10 +1898,10 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
               </button>
               <button
                 type="submit"
-                onClick={handleReservation}
-                className="px-4 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700"
+                onClick={handleSubmit}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
               >
-                Crear Reserva
+                {editingItem ? 'Actualizar' : 'Agregar'}
               </button>
             </div>
           </div>
@@ -2728,16 +1916,15 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
               <h2 className="text-xl font-bold mb-4">Vender Producto</h2>
               <div className="mb-4 p-4 bg-gray-50 rounded-lg">
                 <h3 className="font-medium text-gray-900">{sellingItem.nombre}</h3>
-                <p className="text-sm text-gray-600">{sellingItem.codigo} - {sellingItem.categoria}</p>
+                <p className="text-sm text-gray-600">{sellingItem.categoria}</p>
                 <p className="text-sm text-gray-600">Stock disponible: {sellingItem.cantidadstock}</p>
                 <p className="text-sm text-gray-600">Precio: ${sellingItem.precioventa}</p>
               </div>
               <form onSubmit={handleSale} className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="cantidadVendida">Cantidad a vender</label>
+                  <label className="block text-sm font-medium mb-1">Cantidad a vender</label>
                   <input
                     type="number"
-                    id="cantidadVendida"
                     value={saleData.cantidadVendida}
                     onChange={(e) => setSaleData({ ...saleData, cantidadVendida: e.target.value })}
                     min="1"
@@ -2747,10 +1934,9 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="precioVentaModal">Precio de venta (opcional)</label>
+                  <label className="block text-sm font-medium mb-1">Precio de venta (opcional)</label>
                   <input
                     type="number"
-                    id="precioVentaModal"
                     value={saleData.precioVenta}
                     onChange={(e) => setSaleData({ ...saleData, precioVenta: e.target.value })}
                     min="0"
@@ -2760,9 +1946,8 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="metodoPago">Método de pago</label>
+                  <label className="block text-sm font-medium mb-1">Método de pago</label>
                   <select
-                    id="metodoPago"
                     value={saleData.metodoPago}
                     onChange={(e) => setSaleData({ ...saleData, metodoPago: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -2773,9 +1958,8 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1" htmlFor="notas">Notas (opcional)</label>
+                  <label className="block text-sm font-medium mb-1">Notas (opcional)</label>
                   <textarea
-                    id="notas"
                     value={saleData.notas}
                     onChange={(e) => setSaleData({ ...saleData, notas: e.target.value })}
                     rows="2"
@@ -2789,7 +1973,6 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
                 </div>
               </form>
             </div>
-            {/* Botones fijos en la parte inferior */}
             <div className="border-t bg-gray-50 px-6 py-4 flex justify-end space-x-2">
               <button
                 type="button"
@@ -3054,6 +2237,149 @@ const MobileSalesCard = ({ sale, deleteSale, onSaleClick, openEditSale }) => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de detalles del inventario */}
+      {isInventoryDetailsModalOpen && selectedInventoryDetails && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 modal-overlay">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Detalles del Producto</h3>
+              <button
+                onClick={() => {
+                  setSelectedInventoryDetails(null);
+                  setIsInventoryDetailsModalOpen(false);
+                }}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nombre del Producto</label>
+                <p className="text-sm text-gray-900 font-medium">{selectedInventoryDetails.nombre}</p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
+                  <p className="text-sm text-gray-900">{selectedInventoryDetails.categoria}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Grupo de Edad</label>
+                  <p className="text-sm text-gray-900">{selectedInventoryDetails.grupo_edad || 'Adulto'}</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tamaño</label>
+                  <p className="text-sm text-gray-900">{selectedInventoryDetails.tamaño}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
+                  <p className="text-sm text-gray-900">{selectedInventoryDetails.color || 'N/A'}</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Stock Disponible</label>
+                  <p className={`text-sm font-medium ${
+                    selectedInventoryDetails.cantidadstock === 0 ? 'text-red-600' : 
+                    selectedInventoryDetails.cantidadstock < 5 ? 'text-yellow-600' : 'text-green-600'
+                  }`}>
+                    {selectedInventoryDetails.cantidadstock} unidades
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Precio de Venta</label>
+                  <p className="text-sm text-gray-900 font-medium">
+                    ${selectedInventoryDetails.precioventa?.toLocaleString()}
+                  </p>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Ubicación</label>
+                <p className="text-sm text-gray-900">{selectedInventoryDetails.ubicacion || 'N/A'}</p>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  selectedInventoryDetails.cantidadstock === 0 ? 'bg-red-100 text-red-800' :
+                  selectedInventoryDetails.cantidadstock < 5 ? 'bg-yellow-100 text-yellow-800' :
+                  'bg-green-100 text-green-800'
+                }`}>
+                  {selectedInventoryDetails.cantidadstock === 0 ? 'Agotado' :
+                   selectedInventoryDetails.cantidadstock < 5 ? 'Bajo Stock' : 'Disponible'}
+                </span>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Creación</label>
+                <p className="text-sm text-gray-900">
+                  {selectedInventoryDetails.created_at ? 
+                    new Date(selectedInventoryDetails.created_at).toLocaleDateString('es-ES', {
+                      year: 'numeric',
+                      month: 'long',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    }) : 'N/A'
+                  }
+                </p>
+              </div>
+              
+              {selectedInventoryDetails.notas && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Notas</label>
+                  <div className="bg-gray-50 rounded-md p-3">
+                    <p className="text-sm text-gray-900 whitespace-pre-wrap">{selectedInventoryDetails.notas}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+              <button
+                onClick={() => {
+                  setSelectedInventoryDetails(null);
+                  setIsInventoryDetailsModalOpen(false);
+                }}
+                className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+              >
+                Cerrar
+              </button>
+              <button
+                onClick={() => {
+                  editItem(selectedInventoryDetails);
+                  setSelectedInventoryDetails(null);
+                  setIsInventoryDetailsModalOpen(false);
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2"
+              >
+                <Edit2 className="w-4 h-4" />
+                Editar
+              </button>
+              <button
+                onClick={() => {
+                  sellItem(selectedInventoryDetails);
+                  setSelectedInventoryDetails(null);
+                  setIsInventoryDetailsModalOpen(false);
+                }}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                disabled={selectedInventoryDetails.cantidadstock === 0}
+              >
+                <DollarSign className="w-4 h-4" />
+                Vender
+              </button>
             </div>
           </div>
         </div>
