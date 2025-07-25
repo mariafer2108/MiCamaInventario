@@ -3,15 +3,17 @@ import {
   Package,
   Plus,
   Search,
-  Edit2,
   Trash2,
-  ShoppingCart,
+  Eye,
+  Download,
   Calendar,
+  ShoppingCart,
+  BarChart3,
+  LogOut,
+  Edit2,
   DollarSign,
   TrendingUp,
-  Eye,
-  X,
-  Download
+  X
 } from 'lucide-react';
 
 // Importar todas las funciones de supabaseService
@@ -24,7 +26,7 @@ import {
   addItem,
   updateItem,
   deleteItemFromDB,
-  addSale,
+  sellProductWithTransfer,
   updateSale,
   deleteSaleFromDB
 } from './supabaseService';
@@ -45,6 +47,156 @@ const getTamañosPorCategoria = (categoria) => {
     return tamañosAlmohadas;
   }
   return tamaños;
+};
+
+// Componente para tarjetas de inventario en móvil
+const MobileInventoryCard = ({ item, setSelectedInventoryDetails, setIsInventoryDetailsModalOpen, sellItem, editItem, deleteItem }) => {
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h3 className="font-bold text-gray-900 text-lg">{item.nombre}</h3>
+          <p className="text-sm text-gray-600">{item.categoria}</p>
+        </div>
+        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+          item.cantidadstock === 0 ? 'bg-red-100 text-red-800' :
+          item.cantidadstock < 5 ? 'bg-yellow-100 text-yellow-800' :
+          'bg-green-100 text-green-800'
+        }`}>
+          {item.cantidadstock === 0 ? 'Agotado' :
+           item.cantidadstock < 5 ? 'Bajo Stock' : 'Disponible'}
+        </span>
+      </div>
+      
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Stock</p>
+          <p className="font-semibold text-gray-900">{item.cantidadstock}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Precio</p>
+          <p className="font-semibold text-green-600">${item.precioventa?.toLocaleString()}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Tamaño</p>
+          <p className="font-semibold text-gray-900">{item.tamaño}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Ubicación</p>
+          <p className="font-semibold text-gray-900">{item.ubicacion}</p>
+        </div>
+      </div>
+      
+      <div className="flex justify-between items-center pt-3 border-t border-gray-100">
+        <button
+          onClick={() => {
+            setSelectedInventoryDetails(item);
+            setIsInventoryDetailsModalOpen(true);
+          }}
+          className="text-gray-600 hover:text-gray-800 p-2"
+          title="Ver detalles"
+        >
+          <Eye className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => sellItem(item)}
+          className="text-green-600 hover:text-green-800 p-2"
+          disabled={item.cantidadstock === 0}
+          title="Vender producto"
+        >
+          <DollarSign className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => editItem(item)}
+          className="text-blue-600 hover:text-blue-800 p-2"
+          title="Editar producto"
+        >
+          <Edit2 className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => {
+            if (window.confirm('¿Estás seguro de que deseas eliminar este producto?')) {
+              deleteItem(item.id);
+            }
+          }}
+          className="text-red-600 hover:text-red-800 p-2"
+          title="Eliminar producto"
+        >
+          <Trash2 className="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Componente para tarjetas de ventas en móvil
+const MobileSalesCard = ({ sale, openSaleDetails, openEditSale, deleteSale }) => {
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-4">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <h3 className="font-bold text-gray-900 text-lg">{sale.nombre}</h3>
+          <p className="text-sm text-gray-600">{sale.categoria}</p>
+        </div>
+        <span className="text-xs text-gray-500">
+          {new Date(sale.fecha_venta).toLocaleDateString('es-ES')}
+        </span>
+      </div>
+      
+      <div className="mb-3">
+        <p className="text-2xl font-bold text-green-600">
+          ${sale.total_venta?.toLocaleString()}
+        </p>
+      </div>
+      
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Cantidad</p>
+          <p className="font-semibold text-gray-900">{sale.cantidad_vendida}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Precio Unit.</p>
+          <p className="font-semibold text-gray-900">${sale.precio_venta?.toLocaleString()}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Tamaño</p>
+          <p className="font-semibold text-gray-900">{sale.tamaño || 'N/A'}</p>
+        </div>
+        <div>
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Método Pago</p>
+          <p className="font-semibold text-gray-900 capitalize">{sale.metodo_pago}</p>
+        </div>
+      </div>
+      
+      <div className="flex justify-between items-center pt-3 border-t border-gray-100">
+        <button
+          onClick={() => openSaleDetails(sale)}
+          className="text-blue-600 hover:text-blue-800 p-2"
+          title="Ver detalles"
+        >
+          <Eye className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => openEditSale(sale)}
+          className="text-orange-600 hover:text-orange-800 p-2"
+          title="Editar venta"
+        >
+          <Edit2 className="w-5 h-5" />
+        </button>
+        <button
+          onClick={() => {
+            if (window.confirm('¿Estás seguro de que deseas eliminar esta venta?')) {
+              deleteSale(sale.id);
+            }
+          }}
+          className="text-red-600 hover:text-red-800 p-2"
+          title="Eliminar venta"
+        >
+          <Trash2 className="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+  );
 };
 
 function App() {
@@ -442,19 +594,28 @@ const loadData = async () => {
     e.preventDefault();
     try {
       const saleInfo = {
-        item_id: sellingItem.id,
-        cantidad_vendida: parseInt(saleData.cantidadVendida),
-        precio_venta: parseFloat(saleData.precioVenta || sellingItem.precioventa),
-        metodo_pago: saleData.metodoPago,
+        cantidadVendida: parseInt(saleData.cantidadVendida),
+        precioVenta: parseFloat(saleData.precioVenta || sellingItem.precioventa),
+        metodoPago: saleData.metodoPago,
         notas: saleData.notas
       };
       
-      await addSale(saleInfo);
+      await sellProductWithTransfer(sellingItem.id, saleInfo);
       await loadData();
       setIsSaleModalOpen(false);
       resetSaleForm();
+      
+      // Mostrar mensaje de éxito
+      setMessage({ 
+        type: 'success', 
+        text: 'Venta registrada y stock actualizado exitosamente' 
+      });
     } catch (error) {
       console.error('Error processing sale:', error);
+      setMessage({ 
+        type: 'error', 
+        text: error.message || 'Error al procesar la venta' 
+      });
     }
   };
 
@@ -539,10 +700,10 @@ const loadData = async () => {
     e.preventDefault();
     try {
       const updatedSaleData = {
-        cantidad_vendida: parseInt(editSaleData.cantidadVendida),
-        precio_venta: parseFloat(editSaleData.precioVenta),
-        fecha_venta: editSaleData.fechaVenta,
-        metodo_pago: editSaleData.metodoPago,
+        cantidadVendida: parseInt(editSaleData.cantidadVendida),
+        precioVenta: parseFloat(editSaleData.precioVenta),
+        fechaVenta: editSaleData.fechaVenta,
+        metodoPago: editSaleData.metodoPago,
         notas: editSaleData.notas
       };
       
@@ -555,18 +716,18 @@ const loadData = async () => {
   };
 
   const editItem = (item) => {
+    setEditingItem(item);
     setFormData({
-      nombre: item.nombre || '',
-      categoria: item.categoria || '',
+      nombre: item.nombre,
+      categoria: item.categoria,
       grupoedad: item.grupo_edad || '',
-      tamaño: item.tamaño || '',
-      color: item.color || '',
-      cantidadstock: item.cantidadstock || '',
-      precioventa: item.precioventa || '',
-      ubicacion: item.ubicacion || '',
+      tamaño: item.tamaño,
+      color: item.color,
+      cantidadstock: item.cantidadstock,
+      precioventa: item.precioventa,
+      ubicacion: item.ubicacion,
       notas: item.notas || ''
     });
-    setEditingItem(item);
     setIsModalOpen(true);
   };
 
@@ -745,110 +906,7 @@ const loadData = async () => {
     URL.revokeObjectURL(url);
   };
 
-  // Componentes móviles
-  const MobileInventoryCard = ({ item }) => (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-3">
-      <div className="flex justify-between items-start mb-2">
-        <h3 className="font-medium text-gray-900 text-sm">{item.nombre}</h3>
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-          item.cantidadstock > 10 ? 'bg-green-100 text-green-800' :
-          item.cantidadstock > 0 ? 'bg-yellow-100 text-yellow-800' :
-          'bg-red-100 text-red-800'
-        }`}>
-          Stock: {item.cantidadstock}
-        </span>
-      </div>
-      
-      <div className="space-y-1 text-xs text-gray-600 mb-3">
-        <p><span className="font-medium">Categoría:</span> {item.categoria}</p>
-        <p><span className="font-medium">Tamaño:</span> {item.tamaño}</p>
-        <p><span className="font-medium">Color:</span> {item.color}</p>
-        <p><span className="font-medium">Precio:</span> ${item.precioventa}</p>
-      </div>
-      
-      <div className="flex gap-2">
-        <button
-          onClick={() => {
-            setSelectedInventoryDetails(item);
-            setIsInventoryDetailsModalOpen(true);
-          }}
-          className="flex-1 bg-gray-50 text-gray-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-gray-100"
-        >
-          <Eye className="w-3 h-3 inline mr-1" />
-          Ver
-        </button>
-        <button
-          onClick={() => editItem(item)}
-          className="flex-1 bg-blue-50 text-blue-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-blue-100"
-        >
-          <Edit2 className="w-3 h-3 inline mr-1" />
-          Editar
-        </button>
-        <button
-          onClick={() => sellItem(item)}
-          className="flex-1 bg-green-50 text-green-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-green-100"
-        >
-          <ShoppingCart className="w-3 h-3 inline mr-1" />
-          Vender
-        </button>
-        <button
-          onClick={() => {
-            if (window.confirm('¿Estás seguro de que deseas eliminar este producto?')) {
-              deleteItem(item.id);
-            }
-          }}
-          className="bg-red-50 text-red-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-red-100"
-        >
-          <Trash2 className="w-3 h-3" />
-        </button>
-      </div>
-    </div>
-  );
 
-  const MobileSalesCard = ({ sale }) => (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-3">
-      <div className="flex justify-between items-start mb-2">
-        <h3 className="font-medium text-gray-900 text-sm">{sale.nombre}</h3>
-        <span className="text-green-600 font-bold text-sm">
-          ${sale.total_venta?.toLocaleString()}
-        </span>
-      </div>
-      
-      <div className="space-y-1 text-xs text-gray-600 mb-3">
-        <p><span className="font-medium">Fecha:</span> {new Date(sale.fecha_venta).toLocaleDateString('es-ES')}</p>
-        <p><span className="font-medium">Cantidad:</span> {sale.cantidad_vendida}</p>
-        <p><span className="font-medium">Precio Unit.:</span> ${sale.precio_venta?.toLocaleString()}</p>
-        <p><span className="font-medium">Método:</span> {sale.metodo_pago}</p>
-      </div>
-      
-      <div className="flex gap-2">
-        <button
-          onClick={() => openSaleDetails(sale)}
-          className="flex-1 bg-blue-50 text-blue-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-blue-100"
-        >
-          <Eye className="w-3 h-3 inline mr-1" />
-          Ver
-        </button>
-        <button
-          onClick={() => openEditSale(sale)}
-          className="flex-1 bg-yellow-50 text-yellow-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-yellow-100"
-        >
-          <Edit2 className="w-3 h-3 inline mr-1" />
-          Editar
-        </button>
-        <button
-          onClick={() => {
-            if (window.confirm('¿Estás seguro de que deseas eliminar esta venta?')) {
-              deleteSale(sale.id);
-            }
-          }}
-          className="bg-red-50 text-red-600 px-3 py-2 rounded-md text-xs font-medium hover:bg-red-100"
-        >
-          <Trash2 className="w-3 h-3" />
-        </button>
-      </div>
-    </div>
-  );
 
   const getSortedSales = () => {
     let filtered = sales.filter(sale => {
@@ -908,8 +966,51 @@ const loadData = async () => {
   };
 
   const calculateUniqueSalesDays = () => {
+    if (!sales || sales.length === 0) return 0;
+    
     const uniqueDates = new Set();
+    
     sales.forEach(sale => {
+      // Verificar que la venta tenga fecha válida
+      if (!sale.fecha_venta) return;
+      
+      let saleDate;
+      try {
+        if (typeof sale.fecha_venta === 'string') {
+          // Si es string, tomar solo la parte de la fecha
+          saleDate = sale.fecha_venta.split('T')[0];
+        } else {
+          // Si es objeto Date, convertir a string formato YYYY-MM-DD
+          const date = new Date(sale.fecha_venta);
+          if (isNaN(date.getTime())) return; // Fecha inválida
+          saleDate = date.toISOString().split('T')[0];
+        }
+        
+        // Solo agregar fechas válidas (formato YYYY-MM-DD)
+        if (saleDate && saleDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          uniqueDates.add(saleDate);
+        }
+      } catch (error) {
+        console.warn('Error procesando fecha de venta:', sale.fecha_venta, error);
+      }
+    });
+    
+    // Debug temporal - puedes remover estas líneas después
+    console.log('🔍 Fechas únicas detectadas:', Array.from(uniqueDates));
+    console.log('📊 Total días con ventas:', uniqueDates.size);
+    
+    return uniqueDates.size;
+  };
+
+  // Función de debug temporal para días con ventas
+  const debugUniqueSalesDays = () => {
+    console.log('🔍 DEBUG DÍAS CON VENTAS:');
+    console.log('Total de ventas:', sales.length);
+    
+    const uniqueDates = new Set();
+    const dateDetails = [];
+    
+    sales.forEach((sale, index) => {
       let saleDate;
       if (typeof sale.fecha_venta === 'string') {
         saleDate = sale.fecha_venta.split('T')[0];
@@ -917,9 +1018,40 @@ const loadData = async () => {
         const date = new Date(sale.fecha_venta);
         saleDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
       }
+      
       uniqueDates.add(saleDate);
+      dateDetails.push({
+        index: index + 1,
+        producto: sale.nombre,
+        fecha_original: sale.fecha_venta,
+        fecha_procesada: saleDate,
+        total: sale.total_venta
+      });
     });
-    return uniqueDates.size;
+    
+    console.log('Fechas únicas encontradas:', Array.from(uniqueDates));
+    console.log('Cantidad de días únicos:', uniqueDates.size);
+    console.log('Detalles de cada venta:');
+    dateDetails.forEach(detail => {
+      console.log(`${detail.index}. ${detail.producto} - ${detail.fecha_procesada} (original: ${detail.fecha_original}) - $${detail.total}`);
+    });
+    
+    // Agrupar por fecha
+    const ventasPorFecha = {};
+    dateDetails.forEach(detail => {
+      if (!ventasPorFecha[detail.fecha_procesada]) {
+        ventasPorFecha[detail.fecha_procesada] = [];
+      }
+      ventasPorFecha[detail.fecha_procesada].push(detail);
+    });
+    
+    console.log('Ventas agrupadas por fecha:');
+    Object.keys(ventasPorFecha).forEach(fecha => {
+      console.log(`📅 ${fecha}: ${ventasPorFecha[fecha].length} ventas`);
+      ventasPorFecha[fecha].forEach(venta => {
+        console.log(`   - ${venta.producto}: $${venta.total}`);
+      });
+    });
   };
 
 
@@ -957,6 +1089,11 @@ const loadData = async () => {
   const dailyEarnings = calculateDailyEarnings();
   const dailyStats = getDailyEarningsStats();
   const uniqueSalesDays = calculateUniqueSalesDays();
+
+  // Llamar función de debug
+  if (sales.length > 0) {
+    debugUniqueSalesDays();
+  }
 
 
 
@@ -1106,55 +1243,67 @@ const loadData = async () => {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-blue-600 shadow-sm">
+      <header className="gradient-bg shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <div className="bg-white rounded-full p-2 mr-3">
+            {/* Logo y título */}
+            <div className="flex items-center gap-4">
+              <div className="bg-white p-2 rounded-lg shadow-md">
                 <Package className="h-6 w-6 text-blue-600" />
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-white">Sistema de Inventario ✨</h1>
-                <p className="text-sm text-blue-100">Bienvenido, {user?.email}</p>
+              <div className="show-mobile">
+                <h1 className="text-xl font-bold text-gray-800">MiCama</h1>
+                <p className="text-sm text-gray-600 hidden sm:block">Sistema de Inventario</p>
               </div>
             </div>
             
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => setCurrentView('inventory')}
-                className={`px-4 py-2 rounded-md text-sm font-medium ${
-                  currentView === 'inventory'
-                    ? 'bg-yellow-500 text-white'
-                    : 'bg-blue-500 text-white hover:bg-blue-400'
-                }`}
-              >
-                📦 Inventario
-              </button>
-              <button
-                onClick={() => setCurrentView('sales')}
-                className={`px-4 py-2 rounded-md text-sm font-medium ${
-                  currentView === 'sales'
-                    ? 'bg-yellow-500 text-white'
-                    : 'bg-blue-500 text-white hover:bg-blue-400'
-                }`}
-              >
-                🛒 Ventas
-              </button>
-              <button
-                onClick={() => setCurrentView('dashboard')}
-                className={`px-4 py-2 rounded-md text-sm font-medium ${
-                  currentView === 'dashboard'
-                    ? 'bg-yellow-500 text-white'
-                    : 'bg-blue-500 text-white hover:bg-blue-400'
-                }`}
-              >
-                📊 Dashboard
-              </button>
+            {/* Navegación y botones */}
+            <div className="flex items-center space-x-1 sm:space-x-3">
+              <div className="flex space-x-1 sm:space-x-2">
+                <button
+                  onClick={() => setCurrentView('inventory')}
+                  className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                    currentView === 'inventory'
+                      ? 'bg-yellow-500 text-white shadow-md'
+                      : 'bg-white/20 text-gray-800 hover:bg-white/30'
+                  }`}
+                >
+                  <Package className="w-4 h-4" />
+                  <span className="hidden sm:inline">Inventario</span>
+                  <span className="sm:hidden">Inv</span>
+                </button>
+                <button
+                  onClick={() => setCurrentView('sales')}
+                  className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                    currentView === 'sales'
+                      ? 'bg-yellow-500 text-white shadow-md'
+                      : 'bg-white/20 text-gray-800 hover:bg-white/30'
+                  }`}
+                >
+                  <ShoppingCart className="w-4 h-4" />
+                  <span className="hidden sm:inline">Ventas</span>
+                  <span className="sm:hidden">Ven</span>
+                </button>
+                <button
+                  onClick={() => setCurrentView('dashboard')}
+                  className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
+                    currentView === 'dashboard'
+                      ? 'bg-yellow-500 text-white shadow-md'
+                      : 'bg-white/20 text-gray-800 hover:bg-white/30'
+                  }`}
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  <span className="hidden sm:inline">Dashboard</span>
+                  <span className="sm:hidden">Dash</span>
+                </button>
+              </div>
+              
               <button
                 onClick={handleLogout}
-                className="bg-red-500 text-white px-4 py-2 rounded-md hover:bg-red-600 text-sm font-medium"
+                className="flex items-center gap-1 sm:gap-2 bg-red-500/90 text-white px-2 sm:px-4 py-2 rounded-lg hover:bg-red-600 text-xs sm:text-sm font-medium transition-all shadow-md"
               >
-                🚪 Cerrar Sesión
+                <LogOut className="w-4 h-4" />
+                <span className="hidden sm:inline">Salir</span>
               </button>
             </div>
           </div>
@@ -1406,7 +1555,15 @@ const loadData = async () => {
             <div className="md:hidden">
               {filteredInventory.length > 0 ? (
                 filteredInventory.map((item) => (
-                  <MobileInventoryCard key={item.id} item={item} />
+                  <MobileInventoryCard 
+                    key={item.id} 
+                    item={item} 
+                    setSelectedInventoryDetails={setSelectedInventoryDetails}
+                    setIsInventoryDetailsModalOpen={setIsInventoryDetailsModalOpen}
+                    sellItem={sellItem}
+                    editItem={editItem}
+                    deleteItem={deleteItem}
+                  />
                 ))
               ) : (
                 <div className="text-center py-8">
@@ -1431,49 +1588,21 @@ const loadData = async () => {
               </div>
               
               {/* Stats Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-6">
+                <div className="bg-green-50 rounded-lg p-3 sm:p-4 border border-green-200">
                   <div className="flex items-center mb-2">
-                    <DollarSign className="w-5 h-5 text-green-600 mr-2" />
-                    <span className="text-sm font-medium text-green-800">Total Ganancias</span>
+                    <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 mr-2" />
+                    <span className="text-xs sm:text-sm font-medium text-green-800">Total Ganancias</span>
                   </div>
-                  <p className="text-2xl font-bold text-green-900">${totalSales.toLocaleString()}</p>
+                  <p className="text-lg sm:text-2xl font-bold text-green-900">${totalSales.toLocaleString()}</p>
                 </div>
                 
-                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                <div className="bg-blue-50 rounded-lg p-3 sm:p-4 border border-blue-200">
                   <div className="flex items-center mb-2">
-                    <TrendingUp className="w-5 h-5 text-blue-600 mr-2" />
-                    <span className="text-sm font-medium text-blue-800">Promedio Diario</span>
+                    <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 mr-2" />
+                    <span className="text-xs sm:text-sm font-medium text-blue-800">Promedio Diario</span>
                   </div>
-                  <p className="text-2xl font-bold text-blue-900">${uniqueSalesDays > 0 ? Math.round(totalSales / uniqueSalesDays).toLocaleString() : '0'}</p>
-                </div>
-                
-                <div className="bg-orange-50 rounded-lg p-4 border border-orange-200">
-                  <div className="flex items-center mb-2">
-                    <Package className="w-5 h-5 text-orange-600 mr-2" />
-                    <span className="text-sm font-medium text-orange-800">Días con Ventas</span>
-                  </div>
-                  <p className="text-2xl font-bold text-orange-900">{uniqueSalesDays}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Desglose Diario */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-              <div className="flex items-center mb-4">
-                <div className="bg-blue-100 p-2 rounded-lg mr-3">
-                  <Calendar className="w-6 h-6 text-blue-600" />
-                </div>
-                <h3 className="text-xl font-bold text-gray-900">Desglose Diario</h3>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-1 gap-4">
-                <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
-                  <div className="flex items-center mb-2">
-                    <Calendar className="w-5 h-5 text-blue-600 mr-2" />
-                    <span className="text-sm font-medium text-blue-800">Hoy - {new Date().toLocaleDateString('es-ES')}</span>
-                  </div>
-                  <p className="text-2xl font-bold text-blue-900">${dailyEarnings.toLocaleString()}</p>
+                  <p className="text-lg sm:text-2xl font-bold text-blue-900">${uniqueSalesDays > 0 ? Math.round(totalSales / uniqueSalesDays).toLocaleString() : '0'}</p>
                 </div>
               </div>
             </div>
@@ -1589,9 +1718,22 @@ const loadData = async () => {
 
             {/* Sales Grid - Mobile */}
             <div className="md:hidden">
-              {sortedSales.map((sale) => (
-                <MobileSalesCard key={sale.id} sale={sale} />
-              ))}
+              {sortedSales.length > 0 ? (
+                sortedSales.map((sale) => (
+                  <MobileSalesCard 
+                    key={sale.id} 
+                    sale={sale} 
+                    openSaleDetails={openSaleDetails}
+                    openEditSale={openEditSale}
+                    deleteSale={deleteSale}
+                  />
+                ))
+              ) : (
+                <div className="text-center py-8">
+                  <ShoppingCart className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-500">No se encontraron ventas</p>
+                </div>
+              )}
             </div>
           </div>
         )}
