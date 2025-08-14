@@ -326,7 +326,7 @@ notas: ''
 
   const categorias = [
 
-    'Sábanas', 'Almohadas', 'Frazadas', 'Faldón', 'Protector colchón', 'Plumones', 'Quilt'
+    'Sábanas', 'Almohadas', 'Frazadas', 'Faldón', 'Protector colchón', 'Plumones', 'Quilt','Toalla'
 
   ];
 
