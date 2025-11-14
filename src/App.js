@@ -238,7 +238,7 @@ const [categoryFilter, setCategoryFilter] = useState('');
 const [ageGroupFilter, setAgeGroupFilter] = useState('');
 
 const [sizeFilter, setSizeFilter] = useState('');
-const [locationFilter, setLocationFilter] = useState('');
+// const [locationFilter, setLocationFilter] = useState('');  // ELIMINADO
 const [sortBy] = useState('nombre'); // Solo lectura
 const [sortOrder] = useState('asc'); // Solo lectura
 
@@ -828,10 +828,10 @@ const loadData = async () => {
       .filter(item => {
         const matchesSearch = item.nombre?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesCategory = !categoryFilter || item.categoria === categoryFilter;
-        const matchesAgeGroup = !ageGroupFilter || item.grupoedad === ageGroupFilter;
+        const matchesAgeGroup = !ageGroupFilter || item.grupo_edad === ageGroupFilter;
         const matchesSize = !sizeFilter || item.tamaño === sizeFilter;
-        const matchesLocation = !locationFilter || item.ubicacion === locationFilter;
-        return matchesSearch && matchesCategory && matchesAgeGroup && matchesSize && matchesLocation;
+        // const matchesLocation = !locationFilter || item.ubicacion === locationFilter; // ELIMINADO
+        return matchesSearch && matchesCategory && matchesAgeGroup && matchesSize; // actualizado
       });
 
     let content = 'INVENTARIO MICAMA\n';
@@ -1135,8 +1135,7 @@ const loadData = async () => {
       const matchesCategory = !categoryFilter || item.categoria === categoryFilter;
       const matchesAgeGroup = !ageGroupFilter || item.grupo_edad === ageGroupFilter;
       const matchesSize = !sizeFilter || item.tamaño === sizeFilter;
-      const matchesLocation = !locationFilter || item.ubicacion === locationFilter;
-      return matchesSearch && matchesCategory && matchesAgeGroup && matchesSize && matchesLocation;
+      return matchesSearch && matchesCategory && matchesAgeGroup && matchesSize;
     })
     .sort((a, b) => {
       let aValue, bValue;
@@ -1391,6 +1390,7 @@ const loadData = async () => {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-6">
               <div className="flex flex-wrap gap-4 items-center mb-4">
                 <div className="flex-1 min-w-64">
+                  {/* buscador */}
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                     <input
@@ -1425,6 +1425,8 @@ const loadData = async () => {
                   ))}
                 </select>
                 
+                {/* Select de ubicación eliminado */}
+                {/* 
                 <select
                   value={locationFilter}
                   onChange={(e) => setLocationFilter(e.target.value)}
@@ -1435,6 +1437,7 @@ const loadData = async () => {
                     <option key={ubicacion} value={ubicacion}>{ubicacion}</option>
                   ))}
                 </select>
+                */}
                 
                 <select
                   value={ageGroupFilter}
@@ -2001,6 +2004,8 @@ const loadData = async () => {
                   </div>
                 </div>
                 
+                {/* Campo de Ubicación eliminado */}
+                {/*
                 <div>
                   <label className="block text-sm font-medium mb-1">Ubicación</label>
                   <select
@@ -2015,6 +2020,7 @@ const loadData = async () => {
                     ))}
                   </select>
                 </div>
+                */}
                 
                 <div>
                   <label className="block text-sm font-medium mb-1">Notas</label>
