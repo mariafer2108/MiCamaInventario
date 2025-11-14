@@ -165,8 +165,7 @@ export const updateItem = async (id, item) => {
         ubicacion: item.ubicacion,
         fechaingreso: item.fechaingreso,
         estado: item.estado,
-        descripcion: item.descripcion,
-        grupo_edad: item.grupoedad
+        descripcion: item.descripcion
       })
       .eq('id', id)
       .select();

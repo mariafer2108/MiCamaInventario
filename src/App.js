@@ -235,10 +235,10 @@ const [searchTerm, setSearchTerm] = useState('');
 
 const [categoryFilter, setCategoryFilter] = useState('');
 
-const [ageGroupFilter, setAgeGroupFilter] = useState('');
+// const [ageGroupFilter, setAgeGroupFilter] = useState(''); // ELIMINADO
 
 const [sizeFilter, setSizeFilter] = useState('');
-// const [locationFilter, setLocationFilter] = useState('');  // ELIMINADO
+const [locationFilter, setLocationFilter] = useState('');
 const [sortBy] = useState('nombre'); // Solo lectura
 const [sortOrder] = useState('asc'); // Solo lectura
 
@@ -280,7 +280,7 @@ nombre: '',
 
 categoria: '',
 
-grupoedad: '',
+// // grupoedad: '', // ELIMINADO // ELIMINADO
 
 tamaño: '',
 
@@ -325,14 +325,12 @@ notas: ''
 // Datos de configuración
 
   const categorias = [
-
-    'Sábanas', 'Almohadas', 'Frazadas', 'Faldón', 'Protector colchón', 'Plumones', 'Quilt','Toalla'
-
+    'Sábanas', 'Almohadas', 'Infantil', 'Frazadas', 'Faldón', 'Protector colchón', 'Plumones', 'Quilt', 'Toalla'
   ];
 
-const gruposEdad = [
-'Adulto', 'Infantil'
-];
+// const gruposEdad = [
+//   'Adulto', 'Infantil'
+// ]; // ELIMINADO
 
 const tamaños = [
 '1 Plaza', '1 1/2 Plaza', '2 Plaza', 'King', 'Super King'
@@ -720,7 +718,7 @@ const loadData = async () => {
     setFormData({
       nombre: item.nombre,
       categoria: item.categoria,
-      grupoedad: item.grupo_edad || '',
+      // grupoedad: item.grupo_edad || '', // ELIMINADO
       tamaño: item.tamaño,
       color: item.color,
       cantidadstock: item.cantidadstock,
@@ -828,10 +826,10 @@ const loadData = async () => {
       .filter(item => {
         const matchesSearch = item.nombre?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesCategory = !categoryFilter || item.categoria === categoryFilter;
-        const matchesAgeGroup = !ageGroupFilter || item.grupo_edad === ageGroupFilter;
+        // const matchesAgeGroup = !ageGroupFilter || item.grupoedad === ageGroupFilter; // ELIMINADO
         const matchesSize = !sizeFilter || item.tamaño === sizeFilter;
-        // const matchesLocation = !locationFilter || item.ubicacion === locationFilter; // ELIMINADO
-        return matchesSearch && matchesCategory && matchesAgeGroup && matchesSize; // actualizado
+        const matchesLocation = !locationFilter || item.ubicacion === locationFilter;
+        return matchesSearch && matchesCategory && matchesSize && matchesLocation; // actualizado
       });
 
     let content = 'INVENTARIO MICAMA\n';
@@ -842,7 +840,7 @@ const loadData = async () => {
     filteredInventory.forEach((item, index) => {
       content += `${index + 1}. ${item.nombre}\n`;
       content += `   Categoría: ${item.categoria || 'N/A'}\n`;
-      content += `   Grupo de Edad: ${item.grupoedad || 'N/A'}\n`;
+      // content += `   Grupo de Edad: ${item.grupoedad || 'N/A'}\n`; // ELIMINADO
       content += `   Tamaño: ${item.tamaño || 'N/A'}\n`;
       content += `   Color: ${item.color || 'N/A'}\n`;
       content += `   Stock: ${item.cantidadstock || 0}\n`;
@@ -1097,45 +1095,16 @@ const loadData = async () => {
 
 
 
-  // Función de debug para el filtro de grupo de edad
-  const debugAgeGroupFilter = () => {
-    console.log('🔍 DEBUG FILTRO GRUPO DE EDAD:');
-    console.log('ageGroupFilter seleccionado:', ageGroupFilter);
-    console.log('Productos en inventario:', inventory.length);
-    
-    // Mostrar todos los valores únicos de grupo_edad en el inventario
-    const gruposEdad = [...new Set(inventory.map(item => item.grupo_edad).filter(Boolean))];
-    console.log('Grupos de edad disponibles en BD:', gruposEdad);
-    
-    // Mostrar algunos productos de ejemplo
-    console.log('Primeros 3 productos con sus grupos de edad:');
-    inventory.slice(0, 3).forEach(item => {
-      console.log(`- ${item.nombre}: grupo_edad = "${item.grupo_edad}" (tipo: ${typeof item.grupo_edad})`);
-    });
-    
-    // Mostrar productos filtrados
-    if (ageGroupFilter) {
-      const filtrados = inventory.filter(item => item.grupo_edad === ageGroupFilter);
-      console.log(`Productos que coinciden con "${ageGroupFilter}":`, filtrados.length);
-      filtrados.forEach(item => {
-        console.log(`- ${item.nombre}: "${item.grupo_edad}"`);
-      });
-    }
-  };
-
-  // Llamar la función cuando cambie el filtro
-  if (ageGroupFilter) {
-    debugAgeGroupFilter();
-  }
 
   // Filtrado de inventario
   const filteredInventory = filterInventoryByDate(inventory, inventoryDateFilter)
     .filter(item => {
       const matchesSearch = item.nombre?.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = !categoryFilter || item.categoria === categoryFilter;
-      const matchesAgeGroup = !ageGroupFilter || item.grupo_edad === ageGroupFilter;
+      // const matchesAgeGroup = !ageGroupFilter || item.grupo_edad === ageGroupFilter; // ELIMINADO
       const matchesSize = !sizeFilter || item.tamaño === sizeFilter;
-      return matchesSearch && matchesCategory && matchesAgeGroup && matchesSize;
+      const matchesLocation = !locationFilter || item.ubicacion === locationFilter;
+      return matchesSearch && matchesCategory && matchesSize && matchesLocation; // actualizado
     })
     .sort((a, b) => {
       let aValue, bValue;
@@ -1439,6 +1408,8 @@ const loadData = async () => {
                 </select>
                 */}
                 
+                {/* Select de edades eliminado */}
+                {/* 
                 <select
                   value={ageGroupFilter}
                   onChange={(e) => setAgeGroupFilter(e.target.value)}
@@ -1449,6 +1420,7 @@ const loadData = async () => {
                     <option key={grupo} value={grupo}>{grupo}</option>
                   ))}
                 </select>
+                */}
               </div>
               
               <div className="flex justify-between items-center">
@@ -1938,6 +1910,8 @@ const loadData = async () => {
                       ))}
                     </select>
                   </div>
+                  {/* Campo de Grupo de Edad eliminado */}
+                  {/*
                   <div>
                     <label className="block text-sm font-medium mb-1">Grupo de Edad</label>
                     <select
@@ -1951,6 +1925,7 @@ const loadData = async () => {
                       ))}
                     </select>
                   </div>
+                  */}
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2392,7 +2367,7 @@ const loadData = async () => {
 
       {/* Modal de detalles del inventario */}
       {isInventoryDetailsModalOpen && selectedInventoryDetails && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 modal-overlay">
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 modal-overlay">
           <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-semibold text-gray-900">Detalles del Producto</h3>
@@ -2418,10 +2393,13 @@ const loadData = async () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
                   <p className="text-sm text-gray-900">{selectedInventoryDetails.categoria}</p>
                 </div>
+                {/* Sección de Grupo de Edad eliminada */}
+                {/*
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Grupo de Edad</label>
                   <p className="text-sm text-gray-900">{selectedInventoryDetails.grupo_edad || 'Adulto'}</p>
                 </div>
+                */}
               </div>
               
               <div className="grid grid-cols-2 gap-4">
