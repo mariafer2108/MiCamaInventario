@@ -119,20 +119,17 @@ export const addItem = async (item) => {
   try {
     const { data, error } = await supabase
       .from('inventory')
-      .insert([{
+      .insert([{ 
         nombre: item.nombre,
         categoria: item.categoria,
         tamaño: item.tamaño,
         color: item.color,
-        proveedor: item.proveedor,
         cantidadstock: item.cantidadstock,
         stockminimo: item.stockminimo,
         precioventa: item.precioventa,
-        ubicacion: item.ubicacion,
         fechaingreso: item.fechaingreso,
         estado: item.estado,
-        descripcion: item.descripcion,
-        grupo_edad: item.grupoedad
+        descripcion: item.descripcion
       }])
       .select();
 
@@ -158,11 +155,9 @@ export const updateItem = async (id, item) => {
         categoria: item.categoria,
         tamaño: item.tamaño,
         color: item.color,
-        proveedor: item.proveedor,
         cantidadstock: item.cantidadstock,
         stockminimo: item.stockminimo,
         precioventa: item.precioventa,
-        ubicacion: item.ubicacion,
         fechaingreso: item.fechaingreso,
         estado: item.estado,
         descripcion: item.descripcion
@@ -289,18 +284,17 @@ export const fetchSalesByDateRange = async (startDate, endDate) => {
   }
 };
 
-// Función para transferir producto de bodega a local
+// Función para transferir producto de bodega a local (sin uso de columna 'ubicacion')
 export const transferFromWarehouse = async (productName, categoria, tamaño, color, cantidadNecesaria) => {
   try {
     console.log('🔍 Buscando en bodega:', { productName, categoria, tamaño, color, cantidadNecesaria });
-    
-    // BÚSQUEDA MÁS FLEXIBLE: Primero buscar por nombre y categoría
+
+    // BÚSQUEDA MÁS FLEXIBLE: Primero buscar por nombre y categoría (sin filtro de ubicacion)
     let { data: warehouseProducts, error: searchError } = await supabase
       .from('inventory')
       .select('*')
       .ilike('nombre', `%${productName.trim()}%`)
       .eq('categoria', categoria)
-      .ilike('ubicacion', '%bodega%')
       .gt('cantidadstock', 0)
       .order('cantidadstock', { ascending: false }); // Ordenar por mayor stock
 
@@ -308,7 +302,7 @@ export const transferFromWarehouse = async (productName, categoria, tamaño, col
 
     console.log('🏪 Productos encontrados en bodega (búsqueda flexible):', warehouseProducts);
 
-    // Si no encuentra nada, intentar búsqueda exacta
+    // Si no encuentra nada, intentar búsqueda exacta (sin filtro de ubicacion)
     if (!warehouseProducts || warehouseProducts.length === 0) {
       const { data: exactProducts, error: exactError } = await supabase
         .from('inventory')
@@ -317,7 +311,6 @@ export const transferFromWarehouse = async (productName, categoria, tamaño, col
         .eq('categoria', categoria)
         .eq('tamaño', tamaño)
         .eq('color', color)
-        .ilike('ubicacion', '%bodega%')
         .gt('cantidadstock', 0)
         .limit(1);
 
@@ -326,13 +319,12 @@ export const transferFromWarehouse = async (productName, categoria, tamaño, col
       console.log('🏪 Productos encontrados en bodega (búsqueda exacta):', warehouseProducts);
     }
 
-    // Si aún no encuentra nada, buscar solo por categoría
+    // Si aún no encuentra nada, buscar solo por categoría (sin filtro de ubicacion)
     if (!warehouseProducts || warehouseProducts.length === 0) {
       const { data: categoryProducts, error: categoryError } = await supabase
         .from('inventory')
         .select('*')
         .eq('categoria', categoria)
-        .ilike('ubicacion', '%bodega%')
         .gt('cantidadstock', 0)
         .order('cantidadstock', { ascending: false })
         .limit(1);
@@ -343,8 +335,8 @@ export const transferFromWarehouse = async (productName, categoria, tamaño, col
     }
 
     if (!warehouseProducts || warehouseProducts.length === 0) {
-      return { 
-        success: false, 
+      return {
+        success: false,
         message: `⚠️ No hay stock disponible en bodega para categoría: ${categoria}`,
         bodegaAgotada: true
       };
@@ -353,10 +345,10 @@ export const transferFromWarehouse = async (productName, categoria, tamaño, col
     const warehouseProduct = warehouseProducts[0];
     console.log('📦 Producto seleccionado de bodega:', warehouseProduct);
 
-    // CAMBIO: Transferir todo lo disponible en bodega, aunque no cubra la cantidad necesaria
+    // Transferir todo lo disponible en bodega, aunque no cubra la cantidad necesaria
     const cantidadATransferir = Math.min(warehouseProduct.cantidadstock, cantidadNecesaria);
     const stockInsuficiente = warehouseProduct.cantidadstock < cantidadNecesaria;
-    
+
     console.log('📊 Análisis de transferencia:', {
       stockBodega: warehouseProduct.cantidadstock,
       cantidadNecesaria,
@@ -364,13 +356,12 @@ export const transferFromWarehouse = async (productName, categoria, tamaño, col
       stockInsuficiente
     });
 
-    // Buscar producto en local (también más flexible)
+    // Buscar producto en local (también más flexible y sin filtro de ubicacion)
     const { data: localProducts, error: localSearchError } = await supabase
       .from('inventory')
       .select('*')
       .ilike('nombre', `%${productName.trim()}%`)
       .eq('categoria', categoria)
-      .ilike('ubicacion', '%local%')
       .limit(1);
 
     if (localSearchError) throw localSearchError;
@@ -378,9 +369,9 @@ export const transferFromWarehouse = async (productName, categoria, tamaño, col
     console.log('🏪 Productos encontrados en local:', localProducts);
 
     if (!localProducts || localProducts.length === 0) {
-      return { 
-        success: false, 
-        message: `⚠️ No se encontró el producto en local para transferir` 
+      return {
+        success: false,
+        message: `⚠️ No se encontró el producto en local para transferir`
       };
     }
 
@@ -391,7 +382,7 @@ export const transferFromWarehouse = async (productName, categoria, tamaño, col
     const newWarehouseStock = warehouseProduct.cantidadstock - cantidadATransferir;
     const { error: warehouseUpdateError } = await supabase
       .from('inventory')
-      .update({ 
+      .update({
         cantidadstock: newWarehouseStock,
         estado: newWarehouseStock === 0 ? 'vendido' : warehouseProduct.estado
       })
@@ -405,7 +396,7 @@ export const transferFromWarehouse = async (productName, categoria, tamaño, col
     const newLocalStock = localProduct.cantidadstock + cantidadATransferir;
     const { error: localUpdateError } = await supabase
       .from('inventory')
-      .update({ 
+      .update({
         cantidadstock: newLocalStock,
         estado: 'disponible'
       })
@@ -418,7 +409,7 @@ export const transferFromWarehouse = async (productName, categoria, tamaño, col
     // Generar mensaje según el resultado
     let mensaje = '';
     let bodegaAgotada = false;
-    
+
     if (newWarehouseStock === 0) {
       bodegaAgotada = true;
       if (stockInsuficiente) {
@@ -430,8 +421,8 @@ export const transferFromWarehouse = async (productName, categoria, tamaño, col
       mensaje = `✅ Transferidas ${cantidadATransferir} unidades de "${warehouseProduct.nombre}" desde bodega a local. Nuevo stock local: ${newLocalStock}, Stock restante en bodega: ${newWarehouseStock}`;
     }
 
-    return { 
-      success: true, 
+    return {
+      success: true,
       message: mensaje,
       newLocalStock,
       newWarehouseStock,
@@ -443,18 +434,18 @@ export const transferFromWarehouse = async (productName, categoria, tamaño, col
 
   } catch (error) {
     console.error('❌ Error in transferFromWarehouse:', error);
-    return { 
-      success: false, 
-      message: `❌ Error en transferencia: ${error.message}` 
+    return {
+      success: false,
+      message: `❌ Error en transferencia: ${error.message}`
     };
   }
 };
 
-// Procesar venta de producto con transferencia automática
+// Procesar venta de producto con transferencia automática (sin condicionar por 'ubicacion')
 export const sellProductWithTransfer = async (inventoryId, saleData) => {
   try {
     console.log('🔍 Iniciando venta con transferencia:', { inventoryId, saleData });
-    
+
     // Primero obtener el producto actual
     const { data: product, error: fetchError } = await supabase
       .from('inventory')
@@ -463,40 +454,38 @@ export const sellProductWithTransfer = async (inventoryId, saleData) => {
       .single();
 
     if (fetchError) throw fetchError;
-    
+
     if (!product) {
       throw new Error('Producto no encontrado');
     }
 
     console.log('📦 Producto encontrado:', product);
 
-    // Si es un producto local y no tiene suficiente stock, intentar transferir desde bodega
-    if (product.cantidadstock < saleData.cantidadVendida && 
-        product.ubicacion && product.ubicacion.toLowerCase().includes('local')) {
-      
-      console.log('🚚 Stock local insuficiente, transfiriendo desde bodega...');
-      
+    // Si no hay suficiente stock, intentar transferir desde bodega sin importar la ubicación
+    if (product.cantidadstock < saleData.cantidadVendida) {
+      console.log('🚚 Stock insuficiente, transfiriendo desde bodega...');
+
       const cantidadNecesaria = saleData.cantidadVendida - product.cantidadstock;
-      
-      const transferResult = await transferFromWarehouse(
+
+      const preTransferResult = await transferFromWarehouse(
         product.nombre,
         product.categoria,
         product.tamaño,
         product.color,
         cantidadNecesaria
       );
-      
-      if (transferResult.success) {
+
+      if (preTransferResult.success) {
         // Actualizar el stock del producto después de la transferencia
-        product.cantidadstock = transferResult.newLocalStock;
-        console.log('✅ Transferencia completada:', transferResult.message);
-        
-        // Si la bodega se agotó pero aún no hay suficiente stock para la venta
+        product.cantidadstock = preTransferResult.newLocalStock;
+        console.log('✅ Transferencia completada:', preTransferResult.message);
+
+        // Si aún no hay suficiente stock para la venta después de transferir
         if (product.cantidadstock < saleData.cantidadVendida) {
           throw new Error(
-            `❌ VENTA CANCELADA: Stock insuficiente incluso después de transferir todo desde bodega.\n` +
-            `${transferResult.message}\n` +
-            `• Stock actual en local: ${product.cantidadstock}\n` +
+            `❌ VENTA CANCELADA: Stock insuficiente incluso después de transferir desde bodega.\n` +
+            `${preTransferResult.message}\n` +
+            `• Stock actual: ${product.cantidadstock}\n` +
             `• Cantidad solicitada: ${saleData.cantidadVendida}\n` +
             `• Faltante: ${saleData.cantidadVendida - product.cantidadstock}`
           );
@@ -505,20 +494,12 @@ export const sellProductWithTransfer = async (inventoryId, saleData) => {
         // No hay stock en bodega
         throw new Error(
           `❌ VENTA CANCELADA: Stock insuficiente y no hay disponibilidad en bodega.\n` +
-          `${transferResult.message}\n` +
-          `• Stock en local: ${product.cantidadstock}\n` +
+          `${preTransferResult.message}\n` +
+          `• Stock disponible: ${product.cantidadstock}\n` +
           `• Cantidad solicitada: ${saleData.cantidadVendida}\n` +
           `• Faltante: ${saleData.cantidadVendida - product.cantidadstock}`
         );
       }
-    } else if (product.cantidadstock < saleData.cantidadVendida) {
-      // Producto no es local o no hay transferencia posible
-      throw new Error(
-        `❌ VENTA CANCELADA: Stock insuficiente.\n` +
-        `• Stock disponible: ${product.cantidadstock}\n` +
-        `• Cantidad solicitada: ${saleData.cantidadVendida}\n` +
-        `• Faltante: ${saleData.cantidadVendida - product.cantidadstock}`
-      );
     }
 
     // Calcular nuevo stock
@@ -530,7 +511,7 @@ export const sellProductWithTransfer = async (inventoryId, saleData) => {
     // Actualizar stock en inventory
     const { error: updateError } = await supabase
       .from('inventory')
-      .update({ 
+      .update({
         cantidadstock: newStock,
         estado: newStatus
       })
@@ -561,46 +542,17 @@ export const sellProductWithTransfer = async (inventoryId, saleData) => {
 
     console.log('💰 Venta registrada:', saleRecord);
 
-    let transferResult = null;
-    
-    // Transferencia automática post-venta (para reponer stock)
-    if (product.ubicacion && product.ubicacion.toLowerCase().includes('local')) {
-      console.log('🚚 Iniciando transferencia de reposición desde bodega...');
-      
-      transferResult = await transferFromWarehouse(
-        product.nombre,
-        product.categoria,
-        product.tamaño,
-        product.color,
-        saleData.cantidadVendida
-      );
-      
-      console.log('🚚 Resultado de transferencia de reposición:', transferResult);
-    }
-
-    // Generar alertas
+    // Generar alertas (sin mencionar ubicacion)
     let alertaStock = '';
     if (newStock === 0) {
-      alertaStock = `⚠️ ALERTA: El producto "${product.nombre}" en ${product.ubicacion} se ha quedado SIN STOCK.`;
-    }
-    
-    // Si hay transferencia con bodega agotada
-    if (transferResult && transferResult.bodegaAgotada) {
-      alertaStock += alertaStock ? '\n' : '';
-      alertaStock += `🚨 ALERTA: SE AGOTÓ LA BODEGA para "${product.nombre}".`;
-    }
-    
-    // Si hay transferencia fallida
-    if (transferResult && !transferResult.success) {
-      alertaStock += alertaStock ? '\n' : '';
-      alertaStock += `⚠️ ALERTA: No se pudo reponer stock desde bodega. ${transferResult.message}`;
+      alertaStock = `⚠️ ALERTA: El producto "${product.nombre}" se ha quedado SIN STOCK.`;
     }
 
-    return { 
-      success: true, 
-      saleRecord, 
+    return {
+      success: true,
+      saleRecord,
       newStock,
-      transferResult,
+      transferResult: null,
       alertaStock: alertaStock || null
     };
   } catch (error) {
@@ -1133,9 +1085,8 @@ export const updateRelatedSales = async (inventoryId, updatedProductData) => {
             nombre: updatedProductData.nombre,
             categoria: updatedProductData.categoria,
             tamaño: updatedProductData.tamaño,
-            color: updatedProductData.color,
-            proveedor: updatedProductData.proveedor,
-            ubicacion: updatedProductData.ubicacion
+            color: updatedProductData.color
+            // ubicacion eliminado
           })
           .eq('id', sale.id);
 
@@ -1269,7 +1220,7 @@ export const fixExistingSalesInventoryId = async () => {
   }
 };
 
-// Actualización masiva por criterios
+// Método: updateItemsBulk
 export const updateItemsBulk = async (filters, updateData) => {
   try {
     let query = supabase.from('inventory').update(updateData);
@@ -1278,12 +1229,7 @@ export const updateItemsBulk = async (filters, updateData) => {
     if (filters.categoria) {
       query = query.eq('categoria', filters.categoria);
     }
-    if (filters.ubicacion) {
-      query = query.eq('ubicacion', filters.ubicacion);
-    }
-    if (filters.grupo_edad) {
-      query = query.eq('grupo_edad', filters.grupo_edad);
-    }
+    // filtro por ubicacion eliminado
     if (filters.estado) {
       query = query.eq('estado', filters.estado);
     }

@@ -81,10 +81,6 @@ const MobileInventoryCard = ({ item, setSelectedInventoryDetails, setIsInventory
           <p className="text-xs text-gray-500 uppercase tracking-wide">Tamaño</p>
           <p className="font-semibold text-gray-900">{item.tamaño}</p>
         </div>
-        <div>
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Ubicación</p>
-          <p className="font-semibold text-gray-900">{item.ubicacion}</p>
-        </div>
       </div>
       
       <div className="flex justify-between items-center pt-3 border-t border-gray-100">
@@ -238,7 +234,6 @@ const [categoryFilter, setCategoryFilter] = useState('');
 // const [ageGroupFilter, setAgeGroupFilter] = useState(''); // ELIMINADO
 
 const [sizeFilter, setSizeFilter] = useState('');
-const [locationFilter, setLocationFilter] = useState('');
 const [sortBy] = useState('nombre'); // Solo lectura
 const [sortOrder] = useState('asc'); // Solo lectura
 
@@ -290,7 +285,6 @@ cantidadstock: '',
 
 precioventa: '',
 
-ubicacion: '',
 
 notas: ''
 
@@ -359,9 +353,6 @@ const paymentMethods = [
 
 ];
 
-const ubicaciones = [
-  'Local', 'Bodega'
-];
 
 const dateFilters = [
 
@@ -626,7 +617,6 @@ const loadData = async () => {
       color: '',
       cantidadstock: '',
       precioventa: '',
-      ubicacion: '',
       notas: ''
     });
     setEditingItem(null);
@@ -723,7 +713,6 @@ const loadData = async () => {
       color: item.color,
       cantidadstock: item.cantidadstock,
       precioventa: item.precioventa,
-      ubicacion: item.ubicacion,
       notas: item.notas || ''
     });
     setIsModalOpen(true);
@@ -828,8 +817,7 @@ const loadData = async () => {
         const matchesCategory = !categoryFilter || item.categoria === categoryFilter;
         // const matchesAgeGroup = !ageGroupFilter || item.grupoedad === ageGroupFilter; // ELIMINADO
         const matchesSize = !sizeFilter || item.tamaño === sizeFilter;
-        const matchesLocation = !locationFilter || item.ubicacion === locationFilter;
-        return matchesSearch && matchesCategory && matchesSize && matchesLocation; // actualizado
+        return matchesSearch && matchesCategory && matchesSize; // actualizado sin ubicación
       });
 
     let content = 'INVENTARIO MICAMA\n';
@@ -845,8 +833,7 @@ const loadData = async () => {
       content += `   Color: ${item.color || 'N/A'}\n`;
       content += `   Stock: ${item.cantidadstock || 0}\n`;
       content += `   Precio Venta: $${item.precioventa || 0}\n`;
-      content += `   Ubicación: ${item.ubicacion || 'N/A'}\n`;
-      if (item.notas) {
+            if (item.notas) {
         content += `   Notas: ${item.notas}\n`;
       }
       content += '\n';
@@ -1101,10 +1088,9 @@ const loadData = async () => {
     .filter(item => {
       const matchesSearch = item.nombre?.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = !categoryFilter || item.categoria === categoryFilter;
-      // const matchesAgeGroup = !ageGroupFilter || item.grupo_edad === ageGroupFilter; // ELIMINADO
       const matchesSize = !sizeFilter || item.tamaño === sizeFilter;
-      const matchesLocation = !locationFilter || item.ubicacion === locationFilter;
-      return matchesSearch && matchesCategory && matchesSize && matchesLocation; // actualizado
+      // const matchesLocation = !locationFilter || item.ubicacion === locationFilter; // eliminado
+      return matchesSearch && matchesCategory && matchesSize;
     })
     .sort((a, b) => {
       let aValue, bValue;
@@ -1979,15 +1965,14 @@ const loadData = async () => {
                   </div>
                 </div>
                 
-                {/* Campo de Ubicación eliminado */}
-                {/*
+                {/* Campo de Ubicación eliminado en el formulario */}
+                {/* 
                 <div>
                   <label className="block text-sm font-medium mb-1">Ubicación</label>
                   <select
                     value={formData.ubicacion}
                     onChange={(e) => setFormData({ ...formData, ubicacion: e.target.value })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
                   >
                     <option value="">Seleccionar ubicación</option>
                     {ubicaciones.map(ubicacion => (
@@ -2393,11 +2378,11 @@ const loadData = async () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">Categoría</label>
                   <p className="text-sm text-gray-900">{selectedInventoryDetails.categoria}</p>
                 </div>
-                {/* Sección de Grupo de Edad eliminada */}
-                {/*
+                {/* Sección de Ubicación eliminada */}
+                {/* 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Grupo de Edad</label>
-                  <p className="text-sm text-gray-900">{selectedInventoryDetails.grupo_edad || 'Adulto'}</p>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Ubicación</label>
+                  <p className="text-sm text-gray-900">{selectedInventoryDetails.ubicacion || 'N/A'}</p>
                 </div>
                 */}
               </div>
@@ -2431,10 +2416,6 @@ const loadData = async () => {
                 </div>
               </div>
               
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Ubicación</label>
-                <p className="text-sm text-gray-900">{selectedInventoryDetails.ubicacion || 'N/A'}</p>
-              </div>
               
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Estado</label>
