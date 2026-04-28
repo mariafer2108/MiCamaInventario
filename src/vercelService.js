@@ -40,7 +40,10 @@ export const addItem = async (item) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(item),
   });
-  if (!res.ok) throw new Error('Error adding item');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Error adding item');
+  }
   return res.json();
 };
 
@@ -50,7 +53,10 @@ export const updateItem = async (id, item) => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ id, ...item }),
   });
-  if (!res.ok) throw new Error('Error updating item');
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Error updating item');
+  }
   return res.json();
 };
 
