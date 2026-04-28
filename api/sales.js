@@ -1,6 +1,6 @@
-import { db } from '@vercel/postgres';
+const { db } = require('@vercel/postgres');
 
-export default async function handler(request, response) {
+module.exports = async function handler(request, response) {
   const client = await db.connect();
 
   if (request.method === 'GET') {
@@ -15,37 +15,36 @@ export default async function handler(request, response) {
   if (request.method === 'POST') {
     try {
       const { 
-        inventory_id, nombre, categoria, tamaño, color,
-        cantidad_vendida, precio_venta, total_venta,
-        metodo_pago, notas, fecha_venta
+        inventory_id, nombre, categoria, tamaño, color, 
+        cantidad_vendida, precio_venta, total_venta, 
+        metodo_pago, notas, fecha_venta 
       } = request.body;
 
-      // Start transaction for stock update
+      // Transaction to update stock and record sale
       await client.sql`BEGIN`;
+      
+      // Update stock
+      await client.sql`
+        UPDATE inventory 
+        SET cantidadstock = cantidadstock - ${cantidad_vendida}
+        WHERE id = ${inventory_id}
+      `;
 
-      // Insert sale
-      const { rows: saleRows } = await client.sql`
+      // Insert sale record
+      const { rows } = await client.sql`
         INSERT INTO sales (
-          inventory_id, nombre, categoria, tamaño, color,
-          cantidad_vendida, precio_venta, total_venta,
+          inventory_id, nombre, categoria, tamaño, color, 
+          cantidad_vendida, precio_venta, total_venta, 
           metodo_pago, notas, fecha_venta
         ) VALUES (
-          ${inventory_id}, ${nombre}, ${categoria}, ${tamaño}, ${color},
-          ${cantidad_vendida}, ${precio_venta}, ${total_venta},
+          ${inventory_id}, ${nombre}, ${categoria}, ${tamaño}, ${color}, 
+          ${cantidad_vendida}, ${precio_venta}, ${total_venta}, 
           ${metodo_pago}, ${notas}, ${fecha_venta}
         ) RETURNING *;
       `;
 
-      // Update inventory stock
-      await client.sql`
-        UPDATE inventory 
-        SET cantidadstock = cantidadstock - ${cantidad_vendida},
-            estado = CASE WHEN cantidadstock - ${cantidad_vendida} = 0 THEN 'vendido' ELSE estado END
-        WHERE id = ${inventory_id}
-      `;
-
       await client.sql`COMMIT`;
-      return response.status(201).json(saleRows[0]);
+      return response.status(201).json(rows[0]);
     } catch (error) {
       await client.sql`ROLLBACK`;
       return response.status(500).json({ error: error.message });
@@ -57,11 +56,11 @@ export default async function handler(request, response) {
       const { id, ...data } = request.body;
       const { rows } = await client.sql`
         UPDATE sales SET 
-          cantidad_vendida = ${data.cantidad_vendida},
-          precio_venta = ${data.precio_venta},
-          total_venta = ${data.total_venta},
+          cantidad_vendida = ${data.cantidad_vendida}, 
+          precio_venta = ${data.precio_venta}, 
+          total_venta = ${data.total_venta}, 
           metodo_pago = ${data.metodo_pago}, 
-          notas = ${data.notas},
+          notas = ${data.notas}, 
           fecha_venta = ${data.fecha_venta}
         WHERE id = ${id}
         RETURNING *;
@@ -83,4 +82,4 @@ export default async function handler(request, response) {
   }
 
   return response.status(405).json({ message: 'Method not allowed' });
-}
+};

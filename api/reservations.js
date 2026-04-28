@@ -1,6 +1,6 @@
-import { db } from '@vercel/postgres';
+const { db } = require('@vercel/postgres');
 
-export default async function handler(request, response) {
+module.exports = async function handler(request, response) {
   const client = await db.connect();
 
   if (request.method === 'GET') {
@@ -15,20 +15,20 @@ export default async function handler(request, response) {
   if (request.method === 'POST') {
     try {
       const { 
-        inventory_id, nombre_producto, categoria, tamaño, color,
-        cantidad_reservada, valor_reserva, cliente, telefono, notas,
-        precio_unitario, total_producto
+        inventory_id, nombre_producto, categoria, tamaño, color, 
+        cantidad_reservada, valor_reserva, cliente, telefono, 
+        notas, fecha_reserva, estado, precio_unitario, total_producto 
       } = request.body;
 
       const { rows } = await client.sql`
         INSERT INTO reservations (
-          inventory_id, nombre_producto, categoria, tamaño, color,
-          cantidad_reservada, valor_reserva, cliente, telefono, notas,
-          precio_unitario, total_producto
+          inventory_id, nombre_producto, categoria, tamaño, color, 
+          cantidad_reservada, valor_reserva, cliente, telefono, 
+          notas, fecha_reserva, estado, precio_unitario, total_producto
         ) VALUES (
-          ${inventory_id}, ${nombre_producto}, ${categoria}, ${tamaño}, ${color},
-          ${cantidad_reservada}, ${valor_reserva}, ${cliente}, ${telefono}, ${notas},
-          ${precio_unitario}, ${total_producto}
+          ${inventory_id}, ${nombre_producto}, ${categoria}, ${tamaño}, ${color}, 
+          ${cantidad_reservada}, ${valor_reserva}, ${cliente}, ${telefono}, 
+          ${notas}, ${fecha_reserva}, ${estado}, ${precio_unitario}, ${total_producto}
         ) RETURNING *;
       `;
       return response.status(201).json(rows[0]);
@@ -42,10 +42,14 @@ export default async function handler(request, response) {
       const { id, ...data } = request.body;
       const { rows } = await client.sql`
         UPDATE reservations SET 
+          cantidad_reservada = ${data.cantidad_reservada}, 
+          valor_reserva = ${data.valor_reserva}, 
+          cliente = ${data.cliente}, 
+          telefono = ${data.telefono}, 
+          notas = ${data.notas}, 
           estado = ${data.estado},
-          notas = ${data.notas},
-          cantidad_reservada = ${data.cantidad_reservada},
-          valor_reserva = ${data.valor_reserva}
+          precio_unitario = ${data.precio_unitario},
+          total_producto = ${data.total_producto}
         WHERE id = ${id}
         RETURNING *;
       `;
@@ -66,4 +70,4 @@ export default async function handler(request, response) {
   }
 
   return response.status(405).json({ message: 'Method not allowed' });
-}
+};

@@ -1,6 +1,6 @@
-import { db } from '@vercel/postgres';
+const { db } = require('@vercel/postgres');
 
-export default async function handler(request, response) {
+module.exports = async function handler(request, response) {
   try {
     const client = await db.connect();
 
@@ -77,4 +77,4 @@ export default async function handler(request, response) {
     console.error('Database setup error:', error);
     return response.status(500).json({ error: error.message });
   }
-}
+};

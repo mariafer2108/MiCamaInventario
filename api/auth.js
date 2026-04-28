@@ -1,10 +1,10 @@
-import { db } from '@vercel/postgres';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+const { db } = require('@vercel/postgres');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this';
 
-export default async function handler(request, response) {
+module.exports = async function handler(request, response) {
   const client = await db.connect();
 
   if (request.method === 'POST') {
@@ -74,4 +74,4 @@ export default async function handler(request, response) {
   }
 
   return response.status(405).json({ message: 'Method not allowed' });
-}
+};
