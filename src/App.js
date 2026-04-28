@@ -202,8 +202,8 @@ const MobileSalesCard = ({ sale, openSaleDetails, openEditSale, deleteSale, isGu
 
 const GUEST_STORAGE_KEY = 'micama_guest_user';
 
-const createGuestUser = (supabaseUser) => ({
-  ...(supabaseUser || {}),
+const createGuestUser = (userData) => ({
+  ...(userData || {}),
   email: 'invitado',
   isGuest: true
 });
@@ -514,14 +514,15 @@ const handleGuestLogin = async () => {
   setIsLoggingIn(true);
   setLoginError('');
   try {
-    localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify({ isGuest: true }));
+    localStorage.setItem(GUEST_STORAGE_KEY, JSON.stringify({ isGuest: true, id: 'guest-' + Date.now() }));
     const anonUser = await signInAnonymously();
     setUser(createGuestUser(anonUser));
     setEmail('');
     setPassword('');
   } catch (error) {
+    console.error('Error in guest login:', error);
     setLoginError(
-      'No se pudo iniciar como invitado. Revisa que Supabase tenga habilitado el login anónimo y que existan permisos de lectura.'
+      'No se pudo iniciar como invitado. Por favor intenta de nuevo.'
     );
     setUser(createGuestUser());
   } finally {
@@ -632,7 +633,7 @@ const loadData = async () => {
       let errorMessage = 'Error al guardar el producto';
       
       if (error.message && error.message.includes('grupoedad')) {
-        errorMessage = 'Error: La columna "grupoedad" no existe en la base de datos. Verifica la configuración de Supabase.';
+        errorMessage = 'Error: La columna "grupoedad" no existe en la base de datos. Verifica la configuración de la base de datos.';
       } else if (error.message && error.message.includes('PGRST204')) {
         errorMessage = 'Error de base de datos: Columna no encontrada. Verifica la estructura de la tabla.';
       } else if (error.message) {
@@ -1067,7 +1068,7 @@ const loadData = async () => {
         }
         
         // Solo agregar fechas válidas (formato YYYY-MM-DD)
-        if (saleDate && saleDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        if (saleDate && /^\d{4}-\d{2}-\d{2}$/.test(saleDate)) {
           uniqueDates.add(saleDate);
         }
       } catch (error) {

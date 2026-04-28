@@ -1,7 +1,7 @@
 import { act, render, screen } from '@testing-library/react';
 import App from './App';
 
-jest.mock('./supabaseService', () => ({
+jest.mock('./vercelService', () => ({
   getCurrentUser: jest.fn(async () => null),
   signIn: jest.fn(async () => ({ id: 'test-user' })),
   signInAnonymously: jest.fn(async () => ({ id: 'test-guest' })),
@@ -13,7 +13,11 @@ jest.mock('./supabaseService', () => ({
   deleteItemFromDB: jest.fn(async () => []),
   sellProductWithTransfer: jest.fn(async () => []),
   updateSale: jest.fn(async () => []),
-  deleteSaleFromDB: jest.fn(async () => [])
+  deleteSaleFromDB: jest.fn(async () => []),
+  fetchReservations: jest.fn(async () => []),
+  addReservation: jest.fn(async () => []),
+  updateReservation: jest.fn(async () => []),
+  deleteReservationFromDB: jest.fn(async () => [])
 }));
 
 test('muestra la pantalla de login después del preloader', async () => {
