@@ -127,10 +127,71 @@ export const deleteReservationFromDB = async (id) => {
   return res.json();
 };
 
-// Placeholder for Auth (since Vercel Postgres doesn't provide it)
-// We keep using Supabase Auth or implement a simple mock/guest logic
+// --- AUTHENTICATION ---
+export const signIn = async (email, password) => {
+  const res = await fetch(`${API_BASE}/auth`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'login', email, password }),
+  });
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.error || 'Error al iniciar sesión');
+  }
+  const data = await res.json();
+  localStorage.setItem('auth_token', data.token);
+  localStorage.setItem('user_data', JSON.stringify(data.user));
+  return data.user;
+};
+
+export const signInAnonymously = async () => {
+  // Mock anonymous login for Vercel
+  const guestUser = { id: 'guest-' + Date.now(), email: 'invitado@micama.com', isGuest: true };
+  localStorage.setItem('guest_user', JSON.stringify(guestUser));
+  return guestUser;
+};
+
+export const signOut = async () => {
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('user_data');
+  localStorage.removeItem('guest_user');
+  localStorage.removeItem('micama_guest_user');
+  return true;
+};
+
 export const getCurrentUser = async () => {
-  // For now, return what's in localStorage or null
-  const savedUser = localStorage.getItem('guest_user');
-  return savedUser ? JSON.parse(savedUser) : null;
+  const token = localStorage.getItem('auth_token');
+  const guestRaw = localStorage.getItem('guest_user') || localStorage.getItem('micama_guest_user');
+  
+  if (guestRaw) return JSON.parse(guestRaw);
+  if (!token) return null;
+
+  try {
+    const res = await fetch(`${API_BASE}/auth`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user_data');
+      return null;
+    }
+    const data = await res.json();
+    return data.user;
+  } catch (error) {
+    return null;
+  }
+};
+
+// Function to setup initial admin (utility)
+export const setupAdmin = async (email, password) => {
+  const res = await fetch(`${API_BASE}/auth`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'setup-admin', email, password }),
+  });
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.error || 'Error al configurar admin');
+  }
+  return res.json();
 };

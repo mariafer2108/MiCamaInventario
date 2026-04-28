@@ -61,6 +61,17 @@ export default async function handler(request, response) {
       );
     `;
 
+    // Create Users table for custom Auth
+    await client.sql`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT DEFAULT 'admin',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `;
+
     return response.status(200).json({ message: 'Database tables created successfully' });
   } catch (error) {
     console.error('Database setup error:', error);

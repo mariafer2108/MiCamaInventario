@@ -19,6 +19,9 @@ import {
 // Importar todas las funciones de vercelService
 import {
   getCurrentUser,
+  signIn,
+  signInAnonymously,
+  signOut,
   fetchInventory,
   fetchSales,
   addItem,
@@ -28,13 +31,6 @@ import {
   updateSale,
   deleteSaleFromDB
 } from './vercelService';
-
-// Importar funciones de auth de supabase (opcional si se mantiene)
-import {
-  signIn,
-  signInAnonymously,
-  signOut
-} from './supabaseService';
 
 // Función para obtener tamaños según categoría
 const getTamañosPorCategoria = (categoria) => {
