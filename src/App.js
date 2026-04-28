@@ -658,7 +658,11 @@ const loadData = async () => {
         cantidadVendida: parseInt(saleData.cantidadVendida),
         precioVenta: parseFloat(saleData.precioVenta || sellingItem.precioventa),
         metodoPago: saleData.metodoPago,
-        notas: saleData.notas
+        notas: saleData.notas,
+        nombre: sellingItem.nombre,
+        categoria: sellingItem.categoria,
+        tamaño: sellingItem.tamaño,
+        color: sellingItem.color
       };
       
       await sellProductWithTransfer(sellingItem.id, saleInfo);
