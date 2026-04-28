@@ -16,9 +16,12 @@ import {
   X
 } from 'lucide-react';
 
-// Importar todas las funciones de vercelService
+// Importar todas las funciones de supabaseService
 import {
   getCurrentUser,
+  signIn,
+  signInAnonymously,
+  signOut,
   fetchInventory,
   fetchSales,
   addItem,
@@ -27,13 +30,6 @@ import {
   sellProductWithTransfer,
   updateSale,
   deleteSaleFromDB
-} from './vercelService';
-
-// Importar funciones de auth de supabase (opcional si se mantiene)
-import {
-  signIn,
-  signInAnonymously,
-  signOut
 } from './supabaseService';
 
 // Función para obtener tamaños según categoría
